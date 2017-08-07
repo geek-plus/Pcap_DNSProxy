@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
-// A local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2015 Chengr28
+// Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
+// Copyright (C) 2012-2017 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -20,239 +20,157 @@
 #include "PrintLog.h"
 
 //Print errors to log file
-bool __fastcall PrintError(
-	_In_ const size_t ErrorType, 
-	_In_ const wchar_t *Message, 
-	_In_opt_ const SSIZE_T ErrorCode, 
-	_In_opt_ const wchar_t *FileName, 
-	_In_opt_ const size_t Line)
+bool PrintError(
+	const LOG_LEVEL_TYPE ErrorLevel, 
+	const LOG_ERROR_TYPE ErrorType, 
+	const wchar_t * const Message, 
+	const ssize_t ErrorCode, 
+	const wchar_t * const FileName, 
+	const size_t Line)
 {
-//Print Error: Enable/Disable, parameter check, message check and file name check
-	if (!Parameter.PrintError || //PrintError 
-		Message == nullptr || CheckEmptyBuffer(Message, wcsnlen_s(Message, ORIGINAL_PACKET_MAXSIZE) * sizeof(wchar_t)) || 
-		FileName != nullptr && CheckEmptyBuffer(FileName, wcsnlen_s(FileName, ORIGINAL_PACKET_MAXSIZE) * sizeof(wchar_t)))
-			return false;
+//Print log level check, parameter check, message check and file name check
+	if (Parameter.PrintLogLevel == LOG_LEVEL_TYPE::LEVEL_0 || ErrorLevel > Parameter.PrintLogLevel || Message == nullptr)
+		return false;
+	std::wstring ErrorMessage(Message);
+	if (ErrorMessage.empty())
+		return false;
+	else 
+		ErrorMessage.clear();
 
 //Convert file name.
-	std::wstring FileNameString, ErrorMessage;
+	std::wstring FileNameString;
 	if (FileName != nullptr)
 	{
+	//FileName length check
+		FileNameString.append(FileName);
+		if (FileNameString.empty())
+			return false;
+		else 
+			FileNameString.clear();
+
+	//Add file name.
 		FileNameString.append(L" in ");
+		FileNameString.append(FileName);
+	#if defined(PLATFORM_WIN)
+		while (FileNameString.find(L"\\\\") != std::wstring::npos)
+			FileNameString.erase(FileNameString.find(L"\\\\"), wcslen(L"\\")); //Delete double backslash.
+	#endif
 
 	//Add line number.
 		if (Line > 0)
-			FileNameString.append(L"line %d of ");
-
-	//Delete double backslash.
-		FileNameString.append(FileName);
-		while (FileNameString.find(L"\\\\") != std::wstring::npos)
-			FileNameString.erase(FileNameString.find(L"\\\\"), wcslen(L"\\"));
+			FileNameString.append(L"(Line %u)");
 	}
 
 //Add log error type.
 	switch (ErrorType)
 	{
 	//Message Notice
-		case LOG_MESSAGE_NOTICE:
+		case LOG_ERROR_TYPE::NOTICE:
 		{
-			ErrorMessage.append(L"Notice: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[Notice] ");
 		}break;
 	//System Error
-	//About System Error Codes, see http://msdn.microsoft.com/en-us/library/windows/desktop/ms681381(v=vs.85).aspx.
-		case LOG_ERROR_SYSTEM:
+	//About System Error Codes, please visit https://msdn.microsoft.com/en-us/library/windows/desktop/ms681381(v=vs.85).aspx.
+		case LOG_ERROR_TYPE::SYSTEM:
 		{
-			ErrorMessage.append(L"System Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-		#if defined(PLATFORM_WIN)
-			else if (ErrorCode == ERROR_FAILED_SERVICE_CONTROLLER_CONNECT)
-				ErrorMessage.append(L", ERROR_FAILED_SERVICE_CONTROLLER_CONNECT(The service process could not connect to the service controller).\n");
-		#endif
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[System Error] ");
 		}break;
 	//Parameter Error
-		case LOG_ERROR_PARAMETER:
+		case LOG_ERROR_TYPE::PARAMETER:
 		{
-			ErrorMessage.append(L"Parameter Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[Parameter Error] ");
 		}break;
 	//IPFilter Error
-	//About Windows Sockets Error Codes, see http://msdn.microsoft.com/en-us/library/windows/desktop/ms740668(v=vs.85).aspx.
-		case LOG_ERROR_IPFILTER:
+		case LOG_ERROR_TYPE::IPFILTER:
 		{
-			ErrorMessage.append(L"IPFilter Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[IPFilter Error] ");
 		}break;
 	//Hosts Error
-	//About Windows Sockets Error Codes, see http://msdn.microsoft.com/en-us/library/windows/desktop/ms740668(v=vs.85).aspx.
-		case LOG_ERROR_HOSTS:
+		case LOG_ERROR_TYPE::HOSTS:
 		{
-			ErrorMessage.append(L"Hosts Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[Hosts Error] ");
 		}break;
 	//Network Error
-	//About Windows Sockets Error Codes, see http://msdn.microsoft.com/en-us/library/windows/desktop/ms740668(v=vs.85).aspx.
-		case LOG_ERROR_NETWORK:
+	//About Windows Sockets error codes, please visit https://msdn.microsoft.com/en-us/library/windows/desktop/ms740668(v=vs.85).aspx.
+		case LOG_ERROR_TYPE::NETWORK:
 		{
-			ErrorMessage.append(L"Network Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-		#if defined(PLATFORM_WIN)
-			else if (ErrorCode == WSAENETUNREACH || //Block error messages when getting Network Unreachable error.
-				ErrorCode == WSAEHOSTUNREACH) //Block error messages when getting Host Unreachable error.
+		//Block error messages when getting Network Unreachable and Host Unreachable error.
+			if ((Parameter.PrintLogLevel == LOG_LEVEL_TYPE::LEVEL_1 || Parameter.PrintLogLevel == LOG_LEVEL_TYPE::LEVEL_2) && 
+				(ErrorCode == WSAENETUNREACH || ErrorCode == WSAEHOSTUNREACH))
 					return true;
-		#endif
 			else 
-				ErrorMessage.append(L", error code is %d.\n");
+				ErrorMessage.append(L"[Network Error] ");
 		}break;
-	//WinPcap Error
+	//WinPcap/LibPcap Error
+	//About WinPcap/LibPcap error codes, please visit https://www.winpcap.org/docs/docs_40_2/html/group__wpcapfunc.html.
 	#if defined(ENABLE_PCAP)
-		case LOG_ERROR_PCAP:
+		case LOG_ERROR_TYPE::PCAP:
 		{
-			ErrorMessage.append(L"Pcap Error: ");
+		//There are no any error codes or file names to be reported in LOG_ERROR_TYPE::PCAP.
+			ErrorMessage.append(L"[Pcap Error] ");
 			ErrorMessage.append(Message);
 
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			return WriteMessage_ScreenFile(ErrorMessage, ErrorCode, Line);
 		}break;
 	#endif
 	//DNSCurve Error
 	#if defined(ENABLE_LIBSODIUM)
-		case LOG_ERROR_DNSCURVE:
+		case LOG_ERROR_TYPE::DNSCURVE:
 		{
-			ErrorMessage.append(L"DNSCurve Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[DNSCurve Error] ");
 		}break;
 	#endif
 	//SOCKS Error
-		case LOG_ERROR_SOCKS:
+		case LOG_ERROR_TYPE::SOCKS:
 		{
-			ErrorMessage.append(L"SOCKS Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[SOCKS Error] ");
 		}break;
-	//HTTP Error
-		case LOG_ERROR_HTTP:
+	//HTTP CONNECT Error
+	//About HTTP status codes, vitis https://en.wikipedia.org/wiki/List_of_HTTP_status_codes.
+		case LOG_ERROR_TYPE::HTTP_CONNECT:
 		{
-			ErrorMessage.append(L"HTTP Error: ");
-			ErrorMessage.append(Message);
-
-		//Copy file name and its line number to error log.
-			if (!FileNameString.empty())
-				ErrorMessage.append(FileNameString);
-
-		//Add error code.
-			if (ErrorCode == 0)
-				ErrorMessage.append(L".\n");
-			else 
-				ErrorMessage.append(L", error code is %d.\n");
+			ErrorMessage.append(L"[HTTP CONNECT Error] ");
 		}break;
+	//TLS Error
+	//About SSPI/SChannel error codes, please visit https://msdn.microsoft.com/en-us/library/windows/desktop/aa380499(v=vs.85).aspx and https://msdn.microsoft.com/en-us/library/windows/desktop/dd721886(v=vs.85).aspx.
+	//About OpenSSL error codes, please visit https://www.openssl.org/docs/manmaster/man3/ERR_get_error.html.
+	#if defined(ENABLE_TLS)
+		case LOG_ERROR_TYPE::TLS:
+		{
+			ErrorMessage.append(L"[TLS Error] ");
+		}break;
+	#endif
 		default:
 		{
 			return false;
 		}
 	}
 
+//Add error messages, error code details, file name and its line number.
+	ErrorMessage.append(Message);
+	ErrorCodeToMessage(ErrorType, ErrorCode, ErrorMessage);
+	if (!FileNameString.empty())
+		ErrorMessage.append(FileNameString);
+	ErrorMessage.append(L".\n");
+
 //Print error log.
-	return PrintScreenAndWriteFile(ErrorMessage, ErrorCode, Line);
+	return WriteMessage_ScreenFile(ErrorMessage, ErrorCode, Line);
 }
 
-//Print to screen and write to file
-bool __fastcall PrintScreenAndWriteFile(
-	_In_ const std::wstring Message, 
-	_In_opt_ const SSIZE_T ErrorCode, 
-	_In_opt_ const size_t Line)
+//Write to screen and file
+bool WriteMessage_ScreenFile(
+	const std::wstring &Message, 
+	const ssize_t ErrorCode, 
+	const size_t Line)
 {
 //Get current date and time.
-	auto TimeStructure = std::make_shared<tm>();
-	memset(TimeStructure.get(), 0, sizeof(tm));
-	auto TimeValues = time(nullptr);
+	tm TimeStructure;
+	memset(&TimeStructure, 0, sizeof(TimeStructure));
+	const auto TimeValues = time(nullptr);
 #if defined(PLATFORM_WIN)
-	if (localtime_s(TimeStructure.get(), &TimeValues) > 0)
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	if (localtime_r(&TimeValues, TimeStructure.get()) == nullptr)
+	if (TimeValues <= 0 || localtime_s(&TimeStructure, &TimeValues) != 0)
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+	if (TimeValues <= 0 || localtime_r(&TimeValues, &TimeStructure) == nullptr)
 #endif
 		return false;
 
@@ -266,128 +184,130 @@ bool __fastcall PrintScreenAndWriteFile(
 
 //Print to screen.
 #if defined(PLATFORM_WIN)
-	if (GlobalRunningStatus.Console)
+	if (GlobalRunningStatus.IsConsole)
 #elif defined(PLATFORM_LINUX)
-	if (!GlobalRunningStatus.Daemon)
+	if (!GlobalRunningStatus.IsDaemon)
 #endif
 	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-
 	//Print startup time.
 		if (LogStartupTime > 0)
 		{
-			fwprintf_s(stderr, L"%d-%02d-%02d %02d:%02d:%02d -> Log opened at this moment.\n", 
-				TimeStructure->tm_year + 1900, 
-				TimeStructure->tm_mon + 1, 
-				TimeStructure->tm_mday, 
-				TimeStructure->tm_hour, 
-				TimeStructure->tm_min, 
-				TimeStructure->tm_sec);
+			PrintToScreen(true, L"[%d-%02d-%02d %02d:%02d:%02d] -> [Notice] Pcap_DNSProxy started.\n", 
+				TimeStructure.tm_year + 1900, 
+				TimeStructure.tm_mon + 1, 
+				TimeStructure.tm_mday, 
+				TimeStructure.tm_hour, 
+				TimeStructure.tm_min, 
+				TimeStructure.tm_sec);
 		}
 
 	//Print message.
-		fwprintf_s(stderr, L"%d-%02d-%02d %02d:%02d:%02d -> ", 
-			TimeStructure->tm_year + 1900, 
-			TimeStructure->tm_mon + 1, 
-			TimeStructure->tm_mday, 
-			TimeStructure->tm_hour, 
-			TimeStructure->tm_min, 
-			TimeStructure->tm_sec);
-		if (Line > 0 && ErrorCode > 0)
-			fwprintf_s(stderr, Message.c_str(), Line, ErrorCode);
+		std::lock_guard<std::mutex> ScreenMutex(ScreenLock);
+		PrintToScreen(false, L"[%d-%02d-%02d %02d:%02d:%02d] -> ", 
+			TimeStructure.tm_year + 1900, 
+			TimeStructure.tm_mon + 1, 
+			TimeStructure.tm_mday, 
+			TimeStructure.tm_hour, 
+			TimeStructure.tm_min, 
+			TimeStructure.tm_sec);
+		if (Line > 0 && ErrorCode != 0)
+			PrintToScreen(false, Message.c_str(), ErrorCode, Line);
 		else if (Line > 0)
-			fwprintf_s(stderr, Message.c_str(), Line);
-		else if (ErrorCode > 0)
-			fwprintf_s(stderr, Message.c_str(), ErrorCode);
+			PrintToScreen(false, Message.c_str(), Line);
+		else if (ErrorCode != 0)
+			PrintToScreen(false, Message.c_str(), ErrorCode);
 		else 
-			fwprintf_s(stderr, Message.c_str());
+			PrintToScreen(false, Message.c_str());
 	}
 
 //Check whole file size.
-	std::unique_lock<std::mutex> ErrorLogMutex(ErrorLogLock);
-
+	auto IsFileDeleted = false;
 #if defined(PLATFORM_WIN)
-	auto File_WIN32_FILE_ATTRIBUTE_DATA = std::make_shared<WIN32_FILE_ATTRIBUTE_DATA>();
-	memset(File_WIN32_FILE_ATTRIBUTE_DATA.get(), 0, sizeof(WIN32_FILE_ATTRIBUTE_DATA));
-	if (GetFileAttributesExW(GlobalRunningStatus.Path_ErrorLog->c_str(), GetFileExInfoStandard, File_WIN32_FILE_ATTRIBUTE_DATA.get()) != FALSE)
+	WIN32_FILE_ATTRIBUTE_DATA FileAttributeData;
+	memset(&FileAttributeData, 0, sizeof(FileAttributeData));
+	std::lock_guard<std::mutex> ErrorLogMutex(ErrorLogLock);
+	if (GetFileAttributesExW(
+		GlobalRunningStatus.Path_ErrorLog->c_str(), 
+		GetFileExInfoStandard, 
+		&FileAttributeData) != FALSE)
 	{
-		auto ErrorFileSize = std::make_shared<LARGE_INTEGER>();
-		memset(ErrorFileSize.get(), 0, sizeof(LARGE_INTEGER));
-		ErrorFileSize->HighPart = File_WIN32_FILE_ATTRIBUTE_DATA->nFileSizeHigh;
-		ErrorFileSize->LowPart = File_WIN32_FILE_ATTRIBUTE_DATA->nFileSizeLow;
-		if (ErrorFileSize->QuadPart > 0 && (size_t)ErrorFileSize->QuadPart >= Parameter.LogMaxSize)
+		LARGE_INTEGER ErrorFileSize;
+		memset(&ErrorFileSize, 0, sizeof(ErrorFileSize));
+		ErrorFileSize.HighPart = FileAttributeData.nFileSizeHigh;
+		ErrorFileSize.LowPart = FileAttributeData.nFileSizeLow;
+		if (ErrorFileSize.QuadPart > 0 && static_cast<uint64_t>(ErrorFileSize.QuadPart) >= Parameter.LogMaxSize)
 		{
-			if (DeleteFileW(GlobalRunningStatus.Path_ErrorLog->c_str()) != FALSE)
-			{
-				ErrorLogMutex.unlock();
-				PrintError(LOG_ERROR_SYSTEM, L"Old error log file was deleted", 0, nullptr, 0);
-				ErrorLogMutex.lock();
-			}
-			else {
+			if (DeleteFileW(
+				GlobalRunningStatus.Path_ErrorLog->c_str()) != FALSE)
+					IsFileDeleted = true;
+			else 
 				return false;
-			}
 		}
 	}
-
-	File_WIN32_FILE_ATTRIBUTE_DATA.reset();
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	auto FileStat = std::make_shared<struct stat>();
-	memset(FileStat.get(), 0, sizeof(struct stat));
-	if (stat(GlobalRunningStatus.sPath_ErrorLog->c_str(), FileStat.get()) == 0 && FileStat->st_size >= (off_t)Parameter.LogMaxSize)
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+	struct stat FileStatData;
+	memset(&FileStatData, 0, sizeof(FileStatData));
+	std::lock_guard<std::mutex> ErrorLogMutex(ErrorLogLock);
+	if (stat(GlobalRunningStatus.MBS_Path_ErrorLog->c_str(), &FileStatData) == 0 && FileStatData.st_size >= static_cast<off_t>(Parameter.LogMaxSize))
 	{
-		if (remove(GlobalRunningStatus.sPath_ErrorLog->c_str()) == 0)
-		{
-			ErrorLogMutex.unlock();
-			PrintError(LOG_ERROR_SYSTEM, L"Old error log file was deleted", 0, nullptr, 0);
-			ErrorLogMutex.lock();
-		}
-		else {
+		if (remove(GlobalRunningStatus.MBS_Path_ErrorLog->c_str()) == 0)
+			IsFileDeleted = true;
+		else 
 			return false;
-		}
 	}
-
-	FileStat.reset();
 #endif
 
 //Write to file.
 #if defined(PLATFORM_WIN)
-	FILE *Output = nullptr;
-	if (_wfopen_s(&Output, GlobalRunningStatus.Path_ErrorLog->c_str(), L"a,ccs=UTF-8") == 0 && Output != nullptr)
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	auto Output = fopen(GlobalRunningStatus.sPath_ErrorLog->c_str(), "a");
-	if (Output != nullptr)
+	FILE *FileHandle = nullptr;
+	if (_wfopen_s(&FileHandle, GlobalRunningStatus.Path_ErrorLog->c_str(), L"a,ccs=UTF-8") == 0 && FileHandle != nullptr)
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+	auto FileHandle = fopen(GlobalRunningStatus.MBS_Path_ErrorLog->c_str(), ("a"));
+	if (FileHandle != nullptr)
 #endif
 	{
 	//Print startup time.
 		if (LogStartupTime > 0)
 		{
-			fwprintf_s(Output, L"%d-%02d-%02d %02d:%02d:%02d -> Log opened at this moment.\n", 
-				TimeStructure->tm_year + 1900, 
-				TimeStructure->tm_mon + 1, 
-				TimeStructure->tm_mday, 
-				TimeStructure->tm_hour, 
-				TimeStructure->tm_min, 
-				TimeStructure->tm_sec);
+			fwprintf_s(FileHandle, L"[%d-%02d-%02d %02d:%02d:%02d] -> [Notice] Pcap_DNSProxy started.\n", 
+				TimeStructure.tm_year + 1900, 
+				TimeStructure.tm_mon + 1, 
+				TimeStructure.tm_mday, 
+				TimeStructure.tm_hour, 
+				TimeStructure.tm_min, 
+				TimeStructure.tm_sec);
 		}
 
-	//Print message.
-		fwprintf_s(Output, L"%d-%02d-%02d %02d:%02d:%02d -> ", 
-			TimeStructure->tm_year + 1900, 
-			TimeStructure->tm_mon + 1, 
-			TimeStructure->tm_mday, 
-			TimeStructure->tm_hour, 
-			TimeStructure->tm_min, 
-			TimeStructure->tm_sec);
-		if (Line > 0 && ErrorCode > 0)
-			fwprintf_s(Output, Message.c_str(), Line, ErrorCode);
-		else if (Line > 0)
-			fwprintf_s(Output, Message.c_str(), Line);
-		else if (ErrorCode > 0)
-			fwprintf_s(Output, Message.c_str(), ErrorCode);
-		else 
-			fwprintf_s(Output, Message.c_str());
+	//Print old file removed message.
+		if (IsFileDeleted)
+		{
+			fwprintf_s(FileHandle, L"[%d-%02d-%02d %02d:%02d:%02d] -> [Notice] Old log file was removed.\n", 
+				TimeStructure.tm_year + 1900, 
+				TimeStructure.tm_mon + 1, 
+				TimeStructure.tm_mday, 
+				TimeStructure.tm_hour, 
+				TimeStructure.tm_min, 
+				TimeStructure.tm_sec);
+		}
 
-		fclose(Output);
+	//Print main message.
+		fwprintf_s(FileHandle, L"[%d-%02d-%02d %02d:%02d:%02d] -> ", 
+			TimeStructure.tm_year + 1900, 
+			TimeStructure.tm_mon + 1, 
+			TimeStructure.tm_mday, 
+			TimeStructure.tm_hour, 
+			TimeStructure.tm_min, 
+			TimeStructure.tm_sec);
+		if (Line > 0 && ErrorCode != 0)
+			fwprintf_s(FileHandle, Message.c_str(), ErrorCode, Line);
+		else if (Line > 0)
+			fwprintf_s(FileHandle, Message.c_str(), Line);
+		else if (ErrorCode != 0)
+			fwprintf_s(FileHandle, Message.c_str(), ErrorCode);
+		else 
+			fwprintf_s(FileHandle, Message.c_str());
+
+		fclose(FileHandle);
 	}
 	else {
 		return false;
@@ -395,3 +315,255 @@ bool __fastcall PrintScreenAndWriteFile(
 
 	return true;
 }
+
+//Print words to screen
+void PrintToScreen(
+	const bool IsInnerLock, 
+	const wchar_t * const Format, 
+	...
+)
+{
+//Initialization
+	va_list ArgList;
+	va_start(ArgList, Format);
+
+//Print data to screen.
+	if (IsInnerLock)
+	{
+		std::lock_guard<std::mutex> ScreenMutex(ScreenLock);
+		vfwprintf_s(stderr, Format, ArgList);
+	}
+	else {
+		vfwprintf_s(stderr, Format, ArgList);
+	}
+
+//Variable arguments cleanup
+	va_end(ArgList);
+	return;
+}
+
+//Print more details about error code
+void ErrorCodeToMessage(
+	const LOG_ERROR_TYPE ErrorType, 
+	const ssize_t ErrorCode, 
+	std::wstring &Message)
+{
+//Finish the message when there are no error codes.
+	if (ErrorCode == 0)
+		return;
+	else 
+		Message.append(L": ");
+
+//Convert error code to error messages.
+#if defined(PLATFORM_WIN)
+	wchar_t *InnerMessage = nullptr;
+	if (FormatMessageW(
+		FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK, 
+		nullptr, 
+		static_cast<DWORD>(ErrorCode), 
+		MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), 
+		reinterpret_cast<LPWSTR>(&InnerMessage), 
+		0, 
+		nullptr) == 0)
+	{
+	//Define error code format.
+	#if defined(ENABLE_TLS)
+	#if defined(PLATFORM_WIN)
+		if (ErrorType == LOG_ERROR_TYPE::TLS)
+			Message.append(L"0x%x");
+		else 
+	#endif
+	#endif
+		if (ErrorType == LOG_ERROR_TYPE::NOTICE || ErrorType == LOG_ERROR_TYPE::SYSTEM || ErrorType == LOG_ERROR_TYPE::SOCKS || ErrorType == LOG_ERROR_TYPE::HTTP_CONNECT)
+			Message.append(L"%u");
+		else 
+			Message.append(L"%d");
+
+	//Free pointer.
+		if (InnerMessage != nullptr)
+			LocalFree(InnerMessage);
+	}
+	else {
+	//Write error code message.
+		Message.append(InnerMessage);
+		if (Message.back() == ASCII_SPACE)
+			Message.pop_back(); //Delete space.
+		if (Message.back() == ASCII_PERIOD)
+			Message.pop_back(); //Delete period.
+
+	//Define error code format.
+	#if defined(ENABLE_TLS)
+	#if defined(PLATFORM_WIN)
+		if (ErrorType == LOG_ERROR_TYPE::TLS)
+			Message.append(L"[0x%x]");
+		else 
+	#endif
+	#endif
+		if (ErrorType == LOG_ERROR_TYPE::SYSTEM || ErrorType == LOG_ERROR_TYPE::SOCKS || ErrorType == LOG_ERROR_TYPE::HTTP_CONNECT)
+			Message.append(L"[%u]");
+		else 
+			Message.append(L"[%d]");
+
+	//Free pointer.
+		LocalFree(InnerMessage);
+	}
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+	std::wstring InnerMessage;
+	const auto ErrorMessage = strerror(static_cast<int>(ErrorCode));
+	if (ErrorMessage == nullptr || !MBS_To_WCS_String(reinterpret_cast<const uint8_t *>(ErrorMessage), strnlen(ErrorMessage, FILE_BUFFER_SIZE), InnerMessage))
+	{
+		Message.append(L"%d");
+	}
+	else {
+		Message.append(InnerMessage);
+		Message.append(L"[%d]");
+	}
+#endif
+
+	return;
+}
+
+//Print error of reading text
+void ReadTextPrintLog(
+	const READ_TEXT_TYPE InputType, 
+	const size_t FileIndex, 
+	const size_t Line)
+{
+	switch (InputType)
+	{
+		case READ_TEXT_TYPE::HOSTS: //ReadHosts
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::HOSTS, L"Data of a line is too short", 0, FileList_Hosts.at(FileIndex).FileName.c_str(), Line);
+		}break;
+		case READ_TEXT_TYPE::IPFILTER: //ReadIPFilter
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::IPFILTER, L"Data of a line is too short", 0, FileList_IPFilter.at(FileIndex).FileName.c_str(), Line);
+		}break;
+		case READ_TEXT_TYPE::PARAMETER_NORMAL: //ReadParameter
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::PARAMETER, L"Data of a line is too short", 0, FileList_Config.at(FileIndex).FileName.c_str(), Line);
+		}break;
+		case READ_TEXT_TYPE::PARAMETER_MONITOR: //ReadParameter(Monitor mode)
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::PARAMETER, L"Data of a line is too short", 0, FileList_Config.at(FileIndex).FileName.c_str(), Line);
+		}break;
+	#if defined(ENABLE_LIBSODIUM)
+		case READ_TEXT_TYPE::DNSCURVE_DATABASE: //ReadDNSCurveDatabase
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::DNSCURVE, L"Data of a line is too short", 0, FileList_DNSCurveDatabase.at(FileIndex).FileName.c_str(), Line);
+		}break;
+		case READ_TEXT_TYPE::DNSCURVE_MONITOR: //ReadDNSCurveDatabase(Monitor mode)
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::DNSCURVE, L"Data of a line is too short", 0, FileList_DNSCurveDatabase.at(FileIndex).FileName.c_str(), Line);
+		}break;
+	#endif
+	}
+
+	return;
+}
+
+//Print error of HTTP CONNECT
+void HTTP_CONNECT_2_PrintLog(
+	const uint32_t ErrorCode, 
+	std::wstring &Message)
+{
+	switch (ErrorCode)
+	{
+		case HTTP2_ERROR_NO_ERROR:
+		{
+			Message.append(L": NO_ERROR");
+		}break;
+		case HTTP2_ERROR_PROTOCOL_ERROR:
+		{
+			Message.append(L": PROTOCOL_ERROR");
+		}break;
+		case HTTP2_ERROR_INTERNAL_ERROR:
+		{
+			Message.append(L": INTERNAL_ERROR");
+		}break;
+		case HTTP2_ERROR_FLOW_CONTROL_ERROR:
+		{
+			Message.append(L": FLOW_CONTROL_ERROR");
+		}break;
+		case HTTP2_ERROR_SETTINGS_TIMEOUT:
+		{
+			Message.append(L": SETTINGS_TIMEOUT");
+		}break;
+		case HTTP2_ERROR_STREAM_CLOSED:
+		{
+			Message.append(L": STREAM_CLOSED");
+		}break;
+		case HTTP2_ERROR_FRAME_SIZE_ERROR:
+		{
+			Message.append(L": FRAME_SIZE_ERROR");
+		}break;
+		case HTTP2_ERROR_REFUSED_STREAM:
+		{
+			Message.append(L": REFUSED_STREAM");
+		}break;
+		case HTTP2_ERROR_CANCEL:
+		{
+			Message.append(L": CANCEL");
+		}break;
+		case HTTP2_ERROR_COMPRESSION_ERROR:
+		{
+			Message.append(L": COMPRESSION_ERROR");
+		}break;
+		case HTTP2_ERROR_CONNECT_ERROR:
+		{
+			Message.append(L": CONNECT_ERROR");
+		}break;
+		case HTTP2_ERROR_ENHANCE_YOUR_CALM:
+		{
+			Message.append(L": ENHANCE_YOUR_CALM");
+		}break;
+		case HTTP2_ERROR_INADEQUATE_SECURITY:
+		{
+			Message.append(L": INADEQUATE_SECURITY");
+		}break;
+		case HTTP2_ERROR_HTTP_1_1_REQUIRED:
+		{
+			Message.append(L": HTTP_1_1_REQUIRED");
+		}break;
+		default:
+		{
+			Message.append(L": UNKNOWN_ERROR");
+		}
+	}
+
+	return;
+}
+
+#if defined(ENABLE_LIBSODIUM)
+//DNSCurve print error of servers
+void DNSCurvePrintLog(
+	const DNSCURVE_SERVER_TYPE ServerType, 
+	std::wstring &Message)
+{
+	switch (ServerType)
+	{
+		case DNSCURVE_SERVER_TYPE::MAIN_IPV6:
+		{
+			Message = L"IPv6 Main Server ";
+		}break;
+		case DNSCURVE_SERVER_TYPE::MAIN_IPV4:
+		{
+			Message = L"IPv4 Main Server ";
+		}break;
+		case DNSCURVE_SERVER_TYPE::ALTERNATE_IPV6:
+		{
+			Message = L"IPv6 Alternate Server ";
+		}break;
+		case DNSCURVE_SERVER_TYPE::ALTERNATE_IPV4:
+		{
+			Message = L"IPv4 Alternate Server ";
+		}break;
+		default:
+		{
+			Message.clear();
+		}
+	}
+
+	return;
+}
+#endif

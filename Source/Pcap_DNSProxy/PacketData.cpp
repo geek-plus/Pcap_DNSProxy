@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
-// A local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2015 Chengr28
+// Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
+// Copyright (C) 2012-2017 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -20,24 +20,25 @@
 #include "PacketData.h"
 
 /* Get Ethernet Frame Check Sequence/FCS
-uint32_t __fastcall GetFCS(
-	const unsigned char *Buffer, 
+uint32_t GetFCS(
+	const uint8_t *Buffer, 
 	const size_t Length)
 {
-	uint32_t Table[FCS_TABLE_SIZE] = {0}, Gx = 0x04C11DB7, Temp = 0, CRCTable = 0, Value = 0, UI = 0;
-	char ReflectNum[]{8, 32};
+	uint32_t Table[FCS_TABLE_SIZE]{0}, Gx = 0x04C11DB7, Temp = 0, CRC_Table = 0, Value = 0, UI = 0;
+	uint8_t ReflectNum[]{8, 32};
 	int Index[]{0, 0, 0};
-
 	for (Index[0] = 0;Index[0] <= UINT8_MAX;++Index[0])
 	{
 		Value = 0;
 		UI = Index[0];
+
 		for (Index[1U] = 1;Index[1U] < 9;++Index[1U])
 		{
 			if (UI & 1)
-				Value |= 1 << (ReflectNum[0]-Index[1U]);
+				Value |= 1 << (ReflectNum[0] - Index[1U]);
 			UI >>= 1;
 		}
+
 		Temp = Value;
 		Table[Index[0]] = Temp << 24U;
 
@@ -51,128 +52,133 @@ uint32_t __fastcall GetFCS(
 				t2 = Gx;
 			Table[Index[0]] = t1 ^ t2;
 		}
-		CRCTable = Table[Index[0]];
 
+		CRC_Table = Table[Index[0]];
 		UI = Table[Index[0]];
 		Value = 0;
+
 		for (Index[1U] = 1;Index[1U] < 33;++Index[1U])
 		{
 			if (UI & 1)
 				Value |= 1 << (ReflectNum[1U] - Index[1U]);
 			UI >>= 1;
 		}
+
 		Table[Index[0]] = Value;
 	}
 
 	uint32_t CRC = UINT32_MAX;
-	for (Index[0] = 0;Index[0] < (int)Length;+Index[0])
-		CRC = Table[(CRC ^ (*(Buffer + Index[0]))) & UINT8_MAX]^(CRC >> (sizeof(uint8_t) * BYTES_TO_BITS));
+	for (Index[0] = 0;Index[0] < static_cast<int>(Length);+Index[0])
+		CRC = Table[(CRC ^ (*(Buffer + Index[0]))) & UINT8_MAX] ^ (CRC >> (sizeof(uint8_t) * BYTES_TO_BITS));
 
 	return ~CRC;
 }
 */
 
-//Get Checksum
-uint16_t __fastcall GetChecksum(
-	_In_ const uint16_t *Buffer, 
-	_In_ const size_t Length)
+//Get checksum
+uint16_t GetChecksum(
+	const uint16_t *Buffer, 
+	const size_t Length)
 {
-	uint32_t Checksum = CHECKSUM_SUCCESS;
-	size_t InnerLength = Length;
-
+	uint32_t Result = CHECKSUM_SUCCESS;
+	auto InnerLength = Length;
 	while (InnerLength > 1U)
-	{ 
-		Checksum += *Buffer++;
+	{
+		Result += *Buffer++;
 		InnerLength -= sizeof(uint16_t);
 	}
 
 	if (InnerLength)
-		Checksum += *(uint8_t *)Buffer;
+		Result += *reinterpret_cast<const uint8_t *>(Buffer);
+	Result = (Result >> (sizeof(uint16_t) * BYTES_TO_BITS)) + (Result & UINT16_MAX);
+	Result += (Result >> (sizeof(uint16_t) * BYTES_TO_BITS));
 
-	Checksum = (Checksum >> (sizeof(uint16_t) * BYTES_TO_BITS)) + (Checksum & UINT16_MAX);
-	Checksum += (Checksum >> (sizeof(uint16_t) * BYTES_TO_BITS));
-
-	return (uint16_t)(~Checksum);
+	return static_cast<uint16_t>(~Result);
 }
 
 //Get ICMPv6 checksum
-uint16_t __fastcall GetChecksum_ICMPv6(
-	_In_ const unsigned char *Buffer, 
-	_In_ const size_t Length, 
-	_In_ const in6_addr &Destination, 
-	_In_ const in6_addr &Source)
+uint16_t GetChecksum_ICMPv6(
+	const uint8_t * const Buffer, 
+	const size_t Length, 
+	const in6_addr &Destination, 
+	const in6_addr &Source)
 {
-	std::shared_ptr<char> Validation(new char[sizeof(ipv6_psd_hdr) + Length]());
+//Initialization
+	std::unique_ptr<uint8_t[]> Validation(new uint8_t[sizeof(ipv6_psd_hdr) + Length]());
 	memset(Validation.get(), 0, sizeof(ipv6_psd_hdr) + Length);
 
-//Get checksum
-	((pipv6_psd_hdr)Validation.get())->Destination = Destination;
-	((pipv6_psd_hdr)Validation.get())->Source = Source;
-	((pipv6_psd_hdr)Validation.get())->Length = htonl((uint32_t)Length);
-	((pipv6_psd_hdr)Validation.get())->NextHeader = IPPROTO_ICMPV6;
+//Get checksum.
+	(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->Destination = Destination;
+	(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->Source = Source;
+	(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->Length = htonl(static_cast<uint32_t>(Length));
+	(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->NextHeader = IPPROTO_ICMPV6;
 	memcpy_s(Validation.get() + sizeof(ipv6_psd_hdr), Length, Buffer + sizeof(ipv6_hdr), Length);
-	return GetChecksum((uint16_t *)Validation.get(), sizeof(ipv6_psd_hdr) + Length);
+
+	return GetChecksum(reinterpret_cast<uint16_t *>(Validation.get()), sizeof(ipv6_psd_hdr) + Length);
 }
 
 //Get TCP or UDP checksum
-uint16_t __fastcall GetChecksum_TCP_UDP(
-	_In_ const unsigned char *Buffer, 
-	_In_ const size_t Length, 
-	_In_ const uint16_t Protocol_Network, 
-	_In_ const uint16_t Protocol_Transport)
+uint16_t GetChecksum_TCP_UDP(
+	const uint16_t Protocol_Network, 
+	const uint16_t Protocol_Transport, 
+	const uint8_t * const Buffer, 
+	const size_t Length)
 {
-//Get checksum.
-	uint16_t Result = EXIT_FAILURE;
-	if (Protocol_Network == AF_INET6) //IPv6
+	if (Protocol_Network == AF_INET6)
 	{
-		std::shared_ptr<char> Validation(new char[sizeof(ipv6_psd_hdr) + Length]());
+		std::unique_ptr<uint8_t[]> Validation(new uint8_t[sizeof(ipv6_psd_hdr) + Length]());
 		memset(Validation.get(), 0, sizeof(ipv6_psd_hdr) + Length);
-		((pipv6_psd_hdr)Validation.get())->Destination = ((pipv6_hdr)Buffer)->Destination;
-		((pipv6_psd_hdr)Validation.get())->Source = ((pipv6_hdr)Buffer)->Source;
-		((pipv6_psd_hdr)Validation.get())->Length = htonl((uint32_t)Length);
-		((pipv6_psd_hdr)Validation.get())->NextHeader = (uint8_t)Protocol_Transport;
-
+		(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->Destination = (reinterpret_cast<const ipv6_hdr *>(Buffer))->Destination;
+		(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->Source = (reinterpret_cast<const ipv6_hdr *>(Buffer))->Source;
+		(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->Length = htonl(static_cast<uint32_t>(Length));
+		(reinterpret_cast<ipv6_psd_hdr *>(Validation.get()))->NextHeader = static_cast<uint8_t>(Protocol_Transport);
 		memcpy_s(Validation.get() + sizeof(ipv6_psd_hdr), Length, Buffer + sizeof(ipv6_hdr), Length);
-		Result = GetChecksum((uint16_t *)Validation.get(), sizeof(ipv6_psd_hdr) + Length);
+
+		return GetChecksum(reinterpret_cast<uint16_t *>(Validation.get()), sizeof(ipv6_psd_hdr) + Length);
 	}
-	else { //IPv4
-		std::shared_ptr<char> Validation(new char[sizeof(ipv4_psd_hdr) + Length]());
+	else if (Protocol_Network == AF_INET)
+	{
+		std::unique_ptr<uint8_t[]> Validation(new uint8_t[sizeof(ipv4_psd_hdr) + Length]());
 		memset(Validation.get(), 0, sizeof(ipv4_psd_hdr) + Length);
-		((pipv4_psd_hdr)Validation.get())->Destination = ((pipv4_hdr)Buffer)->Destination;
-		((pipv4_psd_hdr)Validation.get())->Source = ((pipv4_hdr)Buffer)->Source;
-		((pipv4_psd_hdr)Validation.get())->Length = htons((uint16_t)Length);
-		((pipv4_psd_hdr)Validation.get())->Protocol = (uint8_t)Protocol_Transport;
+		(reinterpret_cast<ipv4_psd_hdr *>(Validation.get()))->Destination = (reinterpret_cast<const ipv4_hdr *>(Buffer))->Destination;
+		(reinterpret_cast<ipv4_psd_hdr *>(Validation.get()))->Source = (reinterpret_cast<const ipv4_hdr *>(Buffer))->Source;
+		(reinterpret_cast<ipv4_psd_hdr *>(Validation.get()))->Length = htons(static_cast<uint16_t>(Length));
+		(reinterpret_cast<ipv4_psd_hdr *>(Validation.get()))->Protocol = static_cast<uint8_t>(Protocol_Transport);
+		memcpy_s(Validation.get() + sizeof(ipv4_psd_hdr), Length, Buffer + (reinterpret_cast<const ipv4_hdr *>(Buffer))->IHL * IPV4_IHL_BYTES_TIMES, Length);
 
-		memcpy_s(Validation.get() + sizeof(ipv4_psd_hdr), Length, Buffer + ((pipv4_hdr)Buffer)->IHL * IPV4_IHL_BYTES_TIMES, Length);
-		Result = GetChecksum((uint16_t *)Validation.get(), sizeof(ipv4_psd_hdr) + Length);
+		return GetChecksum(reinterpret_cast<uint16_t *>(Validation.get()), sizeof(ipv4_psd_hdr) + Length);
 	}
 
-	return Result;
+	return EXIT_FAILURE;
 }
 
 //Add length data to TCP DNS transmission
-size_t __fastcall AddLengthDataToHeader(
-	_Inout_ char *Buffer, 
-	_In_ const size_t RecvLen, 
-	_In_ const size_t MaxLen)
+size_t AddLengthDataToHeader(
+	uint8_t * const Buffer, 
+	const size_t RecvLen, 
+	const size_t MaxLen)
 {
-	if (MaxLen >= RecvLen + sizeof(uint16_t))
+	if (RecvLen + sizeof(uint16_t) < MaxLen)
 	{
 		memmove_s(Buffer + sizeof(uint16_t), MaxLen - sizeof(uint16_t), Buffer, RecvLen);
-		((pdns_tcp_hdr)Buffer)->Length = htons((uint16_t)RecvLen);
+		(reinterpret_cast<dns_tcp_hdr *>(Buffer))->Length = htons(static_cast<uint16_t>(RecvLen));
 		return RecvLen + sizeof(uint16_t);
 	}
 
 	return EXIT_FAILURE;
 }
 
-//Convert data from chars to DNS query
-size_t __fastcall CharToDNSQuery(
-	_In_ const char *FName, 
-	_Out_ char *TName)
+//Convert data from string to DNS query
+size_t StringToPacketQuery(
+	const uint8_t * const FName, 
+	uint8_t * const TName)
 {
 //Initialization
-	int Index[]{(int)strnlen_s(FName, DOMAIN_MAXSIZE) - 1, 0, 0};
+	int Index[]{static_cast<int>(strnlen_s(reinterpret_cast<const char *>(FName), DOMAIN_MAXSIZE)), 0, 0};
+	if (Index[0] > 0)
+		--Index[0];
+	else 
+		return 0;
 	Index[2U] = Index[0] + 1;
 	*(TName + Index[0] + 2) = 0;
 
@@ -181,7 +187,7 @@ size_t __fastcall CharToDNSQuery(
 	{
 		if (FName[Index[0]] == ASCII_PERIOD)
 		{
-			*(TName + Index[2U]) = (char)Index[1U];
+			*(TName + Index[2U]) = static_cast<uint8_t>(Index[1U]);
 			Index[1U] = 0;
 		}
 		else {
@@ -190,117 +196,119 @@ size_t __fastcall CharToDNSQuery(
 		}
 	}
 
-	*(TName + Index[2U]) = (char)Index[1U];
-	return strnlen_s(TName, DOMAIN_MAXSIZE - 1U) + 1U;
+	*(TName + Index[2U]) = static_cast<uint8_t>(Index[1U]);
+	return strnlen_s(reinterpret_cast<const char *>(TName), DOMAIN_MAXSIZE - 1U) + NULL_TERMINATE_LENGTH;
 }
 
 //Convert data from DNS query to string
-size_t __fastcall DNSQueryToChar(
-	_In_ const char *TName, 
-	_Out_ std::string &FName)
+size_t PacketQueryToString(
+	const uint8_t * const TName, 
+	std::string &FName)
 {
 //Initialization
-	size_t uIndex = 0;
-	char CharIter[]{0, 0};
-	int Index[]{0, 0};
+	size_t LocateIndex = 0;
+	uint8_t StringIter[]{0, 0};
+	int MarkIndex[]{0, 0};
 	FName.clear();
 
 //Convert domain.
-	for (uIndex = 0;uIndex < DOMAIN_MAXSIZE;++uIndex)
+	for (LocateIndex = 0;LocateIndex < DOMAIN_MAXSIZE;++LocateIndex)
 	{
 	//Pointer check
-		if ((uint8_t)TName[uIndex] >= DNS_POINTER_8_BITS)
+		if (TName[LocateIndex] >= DNS_POINTER_8_BITS)
 		{
-			return uIndex + sizeof(uint16_t);
+			return LocateIndex + sizeof(uint16_t);
 		}
-		else if (uIndex == 0)
+		else if (LocateIndex == 0)
 		{
-			Index[0] = TName[uIndex];
+			MarkIndex[0] = TName[LocateIndex];
 		}
-		else if (uIndex == Index[0] + Index[1U] + 1U)
+		else if (LocateIndex == MarkIndex[0] + MarkIndex[1U] + 1U)
 		{
-			Index[0] = TName[uIndex];
-			if (Index[0] == 0)
+			MarkIndex[0] = TName[LocateIndex];
+			if (MarkIndex[0] == 0)
 				break;
-			Index[1U] = (int)uIndex;
 
+			MarkIndex[1U] = static_cast<int>(LocateIndex);
 			FName.append(".");
 		}
 		else {
-			CharIter[0] = TName[uIndex];
-			FName.append(CharIter);
+			StringIter[0] = TName[LocateIndex];
+			FName.append(reinterpret_cast<const char *>(StringIter));
 		}
 	}
 
-	return uIndex;
+	return LocateIndex;
 }
 
 //Convert data from compression DNS query to whole DNS query
-size_t __fastcall MarkWholeDNSQuery(
-	_In_ const char *Packet, 
-	_In_ const size_t Length, 
-	_In_ const char *TName, 
-	_In_ const size_t TNameIndex, 
-	_Inout_ std::string &FName)
+size_t MarkWholePacketQuery(
+	const uint8_t * const WholePacket, 
+	const size_t Length, 
+	const uint8_t * const TName, 
+	const size_t TNameIndex, 
+	std::string &FName)
 {
 //Length and pointer index check
 	if (FName.length() >= DOMAIN_MAXSIZE || TNameIndex < sizeof(dns_hdr) || TNameIndex >= Length)
 		return 0;
 
 //Initialization
-	size_t uIndex = 0, PointerIndex = 0;
-	char CharIter[]{0, 0};
+	size_t LocateIndex = 0;
+	uint8_t StringIter[]{0, 0};
 	int Index[]{0, 0};
 
 //Convert domain.
-	for (uIndex = 0;uIndex < Length - TNameIndex;++uIndex)
+	for (LocateIndex = 0;LocateIndex < Length - TNameIndex;++LocateIndex)
 	{
 	//Pointer check
-		if ((uint8_t)TName[uIndex] >= DNS_POINTER_8_BITS)
+		if (TName[LocateIndex] >= DNS_POINTER_8_BITS)
 		{
-			PointerIndex = ntohs(*(uint16_t *)(TName + uIndex)) & DNS_POINTER_BITS_GET_LOCATE;
+			const size_t PointerIndex = ntohs(*reinterpret_cast<const uint16_t *>(TName + LocateIndex)) & DNS_POINTER_BITS_GET_LOCATE;
 			if (PointerIndex < TNameIndex)
 			{
 				if (!FName.empty())
 					FName.append(".");
 
-				return MarkWholeDNSQuery(Packet, Length, Packet + PointerIndex, PointerIndex, FName);
+				return MarkWholePacketQuery(WholePacket, Length, WholePacket + PointerIndex, PointerIndex, FName);
 			}
 			else {
-				return uIndex;
+				return LocateIndex;
 			}
 		}
-		else if (uIndex == 0)
+		else if (LocateIndex == 0)
 		{
-			Index[0] = TName[uIndex];
+			Index[0] = TName[LocateIndex];
 		}
-		else if (uIndex == Index[0] + Index[1U] + 1U)
+		else if (LocateIndex == Index[0] + Index[1U] + 1U)
 		{
-			Index[0] = TName[uIndex];
+			Index[0] = TName[LocateIndex];
 			if (Index[0] == 0)
 				break;
-			Index[1U] = (int)uIndex;
+			else 
+				Index[1U] = static_cast<int>(LocateIndex);
 
 			FName.append(".");
 		}
 		else {
-			CharIter[0] = TName[uIndex];
-			FName.append(CharIter);
+			StringIter[0] = TName[LocateIndex];
+			FName.append(reinterpret_cast<const char *>(StringIter));
 		}
 	}
 
-	return uIndex;
+	return LocateIndex;
 }
 
 //Make ramdom domains
-void __fastcall MakeRamdomDomain(
-	_Out_ char *Buffer)
+void MakeRamdomDomain(
+	uint8_t * const Buffer)
 {
 //Ramdom number distribution initialization and make ramdom domain length.
-	std::uniform_int_distribution<int> RamdomDistribution(DOMAIN_RAMDOM_MINSIZE, DOMAIN_LEVEL_DATA_MAXSIZE);
-	size_t RamdomLength = RamdomDistribution(*GlobalRunningStatus.RamdomEngine), Index = 0;
+	std::uniform_int_distribution<size_t> RamdomDistribution(DOMAIN_RAMDOM_MINSIZE, DOMAIN_LEVEL_DATA_MAXSIZE);
+	auto RamdomLength = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
 	if (RamdomLength < DOMAIN_RAMDOM_MINSIZE)
 		RamdomLength = DOMAIN_RAMDOM_MINSIZE;
+	size_t Index = 0;
 
 //Make ramdom domain.
 	if (RamdomLength % 2U == 0)
@@ -308,7 +316,7 @@ void __fastcall MakeRamdomDomain(
 		for (Index = 0;Index < RamdomLength - 3U;++Index)
 		{
 			*(Buffer + Index) = *(GlobalRunningStatus.DomainTable + RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-			*(Buffer + Index) = (char)tolower(*(Buffer + Index));
+			*(Buffer + Index) = static_cast<uint8_t>(tolower(*(Buffer + Index)));
 		}
 
 	//Make random domain like a normal Top-Level Domain/TLD.
@@ -330,7 +338,7 @@ void __fastcall MakeRamdomDomain(
 		for (Index = 0;Index < RamdomLength - 4U;++Index)
 		{
 			*(Buffer + Index) = *(GlobalRunningStatus.DomainTable + RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-			*(Buffer + Index) = (char)tolower(*(Buffer + Index));
+			*(Buffer + Index) = static_cast<uint8_t>(tolower(*(Buffer + Index)));
 		}
 
 	//Make random domain like a normal Top-level domain/TLD.
@@ -359,54 +367,69 @@ void __fastcall MakeRamdomDomain(
 }
 
 //Make Domain Case Conversion
-void __fastcall MakeDomainCaseConversion(
-	_Inout_ char *Buffer)
+void MakeDomainCaseConversion(
+	uint8_t * const Buffer)
 {
-//Ramdom number distribution initialization
-	std::uniform_int_distribution<int> RamdomDistribution(0, 1U);
-	size_t Index = 0;
-
-//Make Case Conversion.
-	if (RamdomDistribution(*GlobalRunningStatus.RamdomEngine) % 2U == 0)
+//Initialization
+	auto Length = strnlen_s(reinterpret_cast<const char *>(Buffer), DOMAIN_MAXSIZE);
+	if (Length <= DOMAIN_MINSIZE)
+		return;
+	std::vector<size_t> RamdomIndex;
+	for (size_t Index = 0;Index < Length;++Index)
 	{
-		for (Index = 0;Index < strnlen_s(Buffer, DOMAIN_MAXSIZE);++Index)
-		{
-			if (Index % 2U == 0)
-				*(Buffer + Index) = (char)toupper(*(Buffer + Index));
-		}
+		if (*(Buffer + Index) >= ASCII_LOWERCASE_A && *(Buffer + Index) <= ASCII_LOWERCASE_Z)
+			RamdomIndex.push_back(Index);
 	}
-	else {
-		for (Index = 0;Index < strnlen_s(Buffer, DOMAIN_MAXSIZE);++Index)
-		{
-			if (Index % 2U > 0)
-				*(Buffer + Index) = (char)toupper(*(Buffer + Index));
-		}
+
+//Ramdom number distribution initialization
+	if (RamdomIndex.empty())
+		return;
+	std::uniform_int_distribution<size_t> RamdomDistribution(0, RamdomIndex.size() - 1U);
+	auto RamdomCounts = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
+	if (RamdomCounts == 0)
+		++RamdomCounts;
+
+//Make Domain Case Conversion.
+	for (size_t Index = 0;Index < RamdomCounts;++Index)
+	{
+		size_t BufferIndex = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
+		*(Buffer + RamdomIndex.at(BufferIndex)) = static_cast<uint8_t>(toupper(*(Buffer + RamdomIndex.at(BufferIndex))));
+	}
+
+//Make sure that domain must have more than one char which in the last or the second last to convert.
+	if (*(Buffer + (Length - 1U)) >= ASCII_LOWERCASE_A && *(Buffer + (Length - 1U)) <= ASCII_LOWERCASE_Z && 
+		*(Buffer + (Length - 2U)) >= ASCII_LOWERCASE_A && *(Buffer + (Length - 2U)) <= ASCII_LOWERCASE_Z)
+	{
+		if (RamdomCounts % 2U == 0)
+			*(Buffer + (Length - 1U)) = static_cast<uint8_t>(toupper(*(Buffer + (Length - 1U))));
+		else 
+			*(Buffer + (Length - 2U)) = static_cast<uint8_t>(toupper(*(Buffer + (Length - 2U))));
 	}
 
 	return;
 }
 
 //Add EDNS options to Additional Resource Records in DNS packet(C-Style string)
-size_t __fastcall AddEDNSLabelToAdditionalRR(
-	_Inout_ char *Buffer, 
-	_In_ const size_t Length, 
-	_In_ const size_t MaxLen, 
-	_In_opt_ const SOCKET_DATA *LocalSocketData)
+size_t Add_EDNS_To_Additional_RR(
+	uint8_t * const Buffer, 
+	const size_t Length, 
+	const size_t MaxLen, 
+	const SOCKET_DATA * const LocalSocketData)
 {
 //Initialization
-	auto DNS_Header = (pdns_hdr)Buffer;
+	const auto DNS_Header = reinterpret_cast<dns_hdr *>(Buffer);
 	if (DNS_Header->Additional > 0)
 		return Length;
 	else 
 		DNS_Header->Additional = htons(U16_NUM_ONE);
-	size_t DataLength = Length;
+	auto DataLength = Length;
 
 //Add a new EDNS/OPT Additional Resource Records.
-	if (DataLength + sizeof(dns_record_opt) > MaxLen)
+	if (DataLength + sizeof(dns_record_opt) >= MaxLen)
 		return DataLength;
-	auto DNS_Record_OPT = (pdns_record_opt)(Buffer + DataLength);
-	DNS_Record_OPT->Type = htons(DNS_RECORD_OPT);
-	DNS_Record_OPT->UDPPayloadSize = htons((uint16_t)Parameter.EDNSPayloadSize);
+	const auto DNS_Record_OPT = reinterpret_cast<dns_record_opt *>(Buffer + DataLength);
+	DNS_Record_OPT->Type = htons(DNS_TYPE_OPT);
+	DNS_Record_OPT->UDPPayloadSize = htons(static_cast<uint16_t>(Parameter.EDNS_PayloadSize));
 	DataLength += sizeof(dns_record_opt);
 
 //DNSSEC request
@@ -418,70 +441,118 @@ size_t __fastcall AddEDNSLabelToAdditionalRR(
 	}
 
 //EDNS client subnet
-	if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr || 
-		Parameter.LocalhostSubnet.IPv6 != nullptr || Parameter.LocalhostSubnet.IPv4 != nullptr)
+	if ((Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr) || 
+		Parameter.LocalMachineSubnet_IPv6 != nullptr || Parameter.LocalMachineSubnet_IPv4 != nullptr)
 	{
-		auto DNS_Query = (pdns_qry)(Buffer + DNS_PACKET_QUERY_LOCATE(Buffer));
+		const auto DNS_Query = reinterpret_cast<dns_qry *>(Buffer + DNS_PACKET_QUERY_LOCATE(Buffer));
 
 	//Length, DNS Class and DNS record check
-		if (DataLength + sizeof(edns_client_subnet) > MaxLen || DNS_Query->Classes != htons(DNS_CLASS_IN) || 
-			DNS_Query->Type != htons(DNS_RECORD_AAAA) && DNS_Query->Type != htons(DNS_RECORD_A))
+		if (DataLength + sizeof(edns_client_subnet) >= MaxLen || ntohs(DNS_Query->Classes) != DNS_CLASS_INTERNET || 
+			(ntohs(DNS_Query->Type) != DNS_TYPE_AAAA && ntohs(DNS_Query->Type) != DNS_TYPE_A))
 				return DataLength;
-		auto EDNS_Subnet_Header = (pedns_client_subnet)(Buffer + DataLength);
 
-	//IPv6
-		if (DNS_Query->Type == htons(DNS_RECORD_AAAA) && 
-			(Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6 || 
-			Parameter.LocalhostSubnet.IPv6 != nullptr))
+		const auto EDNS_Subnet_Header = reinterpret_cast<edns_client_subnet *>(Buffer + DataLength);
+
+	//AAAA record(IPv6)
+		if (ntohs(DNS_Query->Type) == DNS_TYPE_AAAA && 
+			((Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6) || 
+			Parameter.LocalMachineSubnet_IPv6 != nullptr))
 		{
 		//Make EDNS Subnet header.
 			EDNS_Subnet_Header->Code = htons(EDNS_CODE_CSUBNET);
 			EDNS_Subnet_Header->Family = htons(ADDRESS_FAMILY_IPV6);
+
+		//Mark network prefix.
+			in6_addr BinaryAddr;
+			memset(&BinaryAddr, 0, sizeof(BinaryAddr));
 			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6)
-				EDNS_Subnet_Header->Netmask_Source = sizeof(in6_addr) * BYTES_TO_BITS; //No recommendation is provided for IPv6 at this time so keep all bits, see https://tools.ietf.org/html/draft-vandergaast-edns-client-subnet-02.
-			else 
-				EDNS_Subnet_Header->Netmask_Source = (uint8_t)Parameter.LocalhostSubnet.IPv6->Prefix;
-			DataLength += sizeof(edns_client_subnet);
-			
+			{
+			//Default prefix of IPv6 address, please visit RFC 7871(https://tools.ietf.org/html/rfc7871).
+				if (Parameter.LocalMachineSubnet_IPv6 != nullptr)
+					EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv6->second);
+				else 
+					EDNS_Subnet_Header->Netmask_Source = EDNS_CLIENT_SUBNET_SOURCE_PREFIX_IPV6;
+
+			//Keep bits of address.
+				BinaryAddr = (reinterpret_cast<const sockaddr_in6 *>(&LocalSocketData->SockAddr))->sin6_addr;
+				if (EDNS_Subnet_Header->Netmask_Source < sizeof(in6_addr) * BYTES_TO_BITS / 2U)
+				{
+					*reinterpret_cast<uint64_t *>(&BinaryAddr) = hton64(ntoh64(*reinterpret_cast<uint64_t *>(&BinaryAddr)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS / 2U - EDNS_Subnet_Header->Netmask_Source))); //Mark high 64 bits.
+					*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U) = 0; //Delete low 64 bits.
+				}
+				else {
+					*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U) = hton64(ntoh64(*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS - EDNS_Subnet_Header->Netmask_Source))); //Mark low 64 bits.
+				}
+			}
+			else {
+				EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv6->second);
+			}
+
 		//Length check
-			if (DataLength + sizeof(in6_addr) > MaxLen)
+			DataLength += sizeof(edns_client_subnet);
+			if (DataLength + sizeof(in6_addr) >= MaxLen)
 				return DataLength;
 
 		//Copy subnet address.
-			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6)
-				*(in6_addr *)(Buffer + DataLength) = ((PSOCKADDR_IN6)&LocalSocketData->SockAddr)->sin6_addr;
+			size_t PrefixBytes = 0;
+			if (EDNS_Subnet_Header->Netmask_Source % BYTES_TO_BITS > 0)
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS + sizeof(uint8_t);
 			else 
-				*(in6_addr *)(Buffer + DataLength) = ((PSOCKADDR_IN6)&Parameter.LocalhostSubnet.IPv6->Address)->sin6_addr;
-			EDNS_Subnet_Header->Length = htons((uint16_t)(sizeof(uint16_t) + sizeof(uint8_t) * 2U + sizeof(in6_addr)));
-			DNS_Record_OPT->DataLength = htons(sizeof(edns_client_subnet) + sizeof(in6_addr));
-			DataLength += sizeof(in6_addr);
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS;
+			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6)
+				*reinterpret_cast<in6_addr *>(Buffer + DataLength) = BinaryAddr;
+			else 
+				*reinterpret_cast<in6_addr *>(Buffer + DataLength) = (reinterpret_cast<sockaddr_in6 *>(&Parameter.LocalMachineSubnet_IPv6->first))->sin6_addr;
+			EDNS_Subnet_Header->Length = htons(static_cast<uint16_t>(sizeof(uint16_t) + sizeof(uint8_t) * 2U + PrefixBytes));
+			DNS_Record_OPT->DataLength = htons(static_cast<uint16_t>(sizeof(edns_client_subnet) + PrefixBytes));
+			DataLength += PrefixBytes;
 		}
-	//IPv4
-		else if (DNS_Query->Type == htons(DNS_RECORD_A) && 
-			(Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET || 
-			Parameter.LocalhostSubnet.IPv4 != nullptr))
+	//A record(IPv4)
+		else if (ntohs(DNS_Query->Type) == DNS_TYPE_A && 
+			((Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET) || 
+			Parameter.LocalMachineSubnet_IPv4 != nullptr))
 		{
 		//Make EDNS Subnet header.
 			EDNS_Subnet_Header->Code = htons(EDNS_CODE_CSUBNET);
 			EDNS_Subnet_Header->Family = htons(ADDRESS_FAMILY_IPV4);
+
+		//Mark network prefix.
+			in_addr BinaryAddr;
+			memset(&BinaryAddr, 0, sizeof(BinaryAddr));
 			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET)
-				EDNS_Subnet_Header->Netmask_Source = (sizeof(in_addr) - 1U) * BYTES_TO_BITS; //Keep 24 bits of IPv4 address, see https://tools.ietf.org/html/draft-vandergaast-edns-client-subnet-02.
-			else 
-				EDNS_Subnet_Header->Netmask_Source = (uint8_t)Parameter.LocalhostSubnet.IPv4->Prefix;
-			DataLength += sizeof(edns_client_subnet);
-			
+			{
+			//Default prefix of IPv4 address, please visit RFC 7871(https://tools.ietf.org/html/rfc7871).
+				if (Parameter.LocalMachineSubnet_IPv4 != nullptr)
+					EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv4->second);
+				else 
+					EDNS_Subnet_Header->Netmask_Source = EDNS_CLIENT_SUBNET_SOURCE_PREFIX_IPV4;
+
+			//Keep bits of address.
+				BinaryAddr = (reinterpret_cast<const sockaddr_in *>(&LocalSocketData->SockAddr))->sin_addr;
+				BinaryAddr.s_addr = htonl(ntohl(BinaryAddr.s_addr) & (UINT32_MAX << (sizeof(in_addr) * BYTES_TO_BITS - EDNS_Subnet_Header->Netmask_Source)));
+			}
+			else {
+				EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv4->second);
+			}
+
 		//Length check
-			if (DataLength + sizeof(in_addr) > MaxLen)
+			DataLength += sizeof(edns_client_subnet);
+			if (DataLength + sizeof(in_addr) >= MaxLen)
 				return DataLength;
 
 		//Copy subnet address.
-			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET)
-				*(in_addr *)(Buffer + DataLength) = ((PSOCKADDR_IN)&LocalSocketData->SockAddr)->sin_addr;
+			size_t PrefixBytes = 0;
+			if (EDNS_Subnet_Header->Netmask_Source % BYTES_TO_BITS > 0)
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS + sizeof(uint8_t);
 			else 
-				*(in_addr *)(Buffer + DataLength) = ((PSOCKADDR_IN)&Parameter.LocalhostSubnet.IPv4->Address)->sin_addr;
-			EDNS_Subnet_Header->Length = htons((uint16_t)(sizeof(uint16_t) + sizeof(uint8_t) * 2U + sizeof(in_addr)));
-			DNS_Record_OPT->DataLength = htons(sizeof(edns_client_subnet) + sizeof(in_addr));
-			DataLength += sizeof(in_addr);
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS;
+			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET)
+				*reinterpret_cast<in_addr *>(Buffer + DataLength) = BinaryAddr;
+			else 
+				*reinterpret_cast<in_addr *>(Buffer + DataLength) = (reinterpret_cast<sockaddr_in *>(&Parameter.LocalMachineSubnet_IPv4->first))->sin_addr;
+			EDNS_Subnet_Header->Length = htons(static_cast<uint16_t>(sizeof(uint16_t) + sizeof(uint8_t) * 2U + PrefixBytes));
+			DNS_Record_OPT->DataLength = htons(static_cast<uint16_t>(sizeof(edns_client_subnet) + PrefixBytes));
+			DataLength += PrefixBytes;
 		}
 	}
 
@@ -489,22 +560,22 @@ size_t __fastcall AddEDNSLabelToAdditionalRR(
 }
 
 //Add EDNS options to Additional Resource Records in DNS packet(DNS packet structure)
-bool __fastcall AddEDNSLabelToAdditionalRR(
-	_Inout_ DNS_PACKET_DATA *Packet, 
-	_In_opt_ const SOCKET_DATA *LocalSocketData)
+bool Add_EDNS_To_Additional_RR(
+	DNS_PACKET_DATA * const Packet, 
+	const SOCKET_DATA * const LocalSocketData)
 {
 //Initialization
-	auto DNS_Header = (pdns_hdr)Packet->Buffer;
-	pdns_record_opt DNS_Record_OPT = nullptr;
+	const auto DNS_Header = reinterpret_cast<dns_hdr *>(Packet->Buffer);
+	dns_record_opt *DNS_Record_OPT = nullptr;
 
 //Add a new EDNS/OPT Additional Resource Records.
 	if (Packet->EDNS_Record == 0)
 	{
 		if (Packet->Length + sizeof(dns_record_opt) >= Packet->BufferSize)
 			return true;
-		DNS_Record_OPT = (pdns_record_opt)(Packet->Buffer + Packet->Length);
-		DNS_Record_OPT->Type = htons(DNS_RECORD_OPT);
-		DNS_Record_OPT->UDPPayloadSize = htons((uint16_t)Parameter.EDNSPayloadSize);
+		DNS_Record_OPT = reinterpret_cast<dns_record_opt *>(Packet->Buffer + Packet->Length);
+		DNS_Record_OPT->Type = htons(DNS_TYPE_OPT);
+		DNS_Record_OPT->UDPPayloadSize = htons(static_cast<uint16_t>(Parameter.EDNS_PayloadSize));
 
 	//Change structure information.
 		Packet->Length += sizeof(dns_record_opt);
@@ -512,7 +583,7 @@ bool __fastcall AddEDNSLabelToAdditionalRR(
 		DNS_Header->Additional = htons(ntohs(DNS_Header->Additional) + 1U);
 	}
 	else {
-		DNS_Record_OPT = (pdns_record_opt)(Packet->Buffer + Packet->Length - Packet->EDNS_Record);
+		DNS_Record_OPT = reinterpret_cast<dns_record_opt *>(Packet->Buffer + Packet->Length - Packet->EDNS_Record);
 	}
 
 //DNSSEC request
@@ -525,75 +596,123 @@ bool __fastcall AddEDNSLabelToAdditionalRR(
 
 //EDNS client subnet
 	if (!(ntohs(DNS_Record_OPT->DataLength) >= sizeof(edns_client_subnet) && 
-		((pedns_client_subnet)(Packet->Buffer + Packet->Length - Packet->EDNS_Record + sizeof(dns_record_opt)))->Code == htons(EDNS_CODE_CSUBNET)) && 
-		(Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr || 
-		Parameter.LocalhostSubnet.IPv6 != nullptr || Parameter.LocalhostSubnet.IPv4 != nullptr))
+		ntohs((reinterpret_cast<edns_client_subnet *>(Packet->Buffer + Packet->Length - Packet->EDNS_Record + sizeof(dns_record_opt)))->Code) == EDNS_CODE_CSUBNET) && 
+		((Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr) || 
+		Parameter.LocalMachineSubnet_IPv6 != nullptr || Parameter.LocalMachineSubnet_IPv4 != nullptr))
 	{
-		auto DNS_Query = (pdns_qry)(Packet->Buffer + DNS_PACKET_QUERY_LOCATE(Packet->Buffer));
+		const auto DNS_Query = reinterpret_cast<dns_qry *>(Packet->Buffer + DNS_PACKET_QUERY_LOCATE(Packet->Buffer));
 
 	//Length, DNS Class and DNS record check
-		if (Packet->Length + sizeof(edns_client_subnet) > Packet->BufferSize || DNS_Query->Classes != htons(DNS_CLASS_IN) || 
-			DNS_Query->Type != htons(DNS_RECORD_AAAA) && DNS_Query->Type != htons(DNS_RECORD_A))
+		if (Packet->Length + sizeof(edns_client_subnet) >= Packet->BufferSize || ntohs(DNS_Query->Classes) != DNS_CLASS_INTERNET || 
+			(ntohs(DNS_Query->Type) != DNS_TYPE_AAAA && ntohs(DNS_Query->Type) != DNS_TYPE_A))
 				return true;
-		auto EDNS_Subnet_Header = (pedns_client_subnet)(Packet->Buffer + Packet->Length);
 
-	//IPv6
-		if (DNS_Query->Type == htons(DNS_RECORD_AAAA) && 
-			(Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6 || 
-			Parameter.LocalhostSubnet.IPv6 != nullptr))
+		const auto EDNS_Subnet_Header = reinterpret_cast<edns_client_subnet *>(Packet->Buffer + Packet->Length);
+
+	//AAAA record(IPv6)
+		if (ntohs(DNS_Query->Type) == DNS_TYPE_AAAA && 
+			((Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6) || 
+			Parameter.LocalMachineSubnet_IPv6 != nullptr))
 		{
 		//Make EDNS Subnet header.
 			EDNS_Subnet_Header->Code = htons(EDNS_CODE_CSUBNET);
 			EDNS_Subnet_Header->Family = htons(ADDRESS_FAMILY_IPV6);
+
+		//Mark network prefix.
+			in6_addr BinaryAddr;
+			memset(&BinaryAddr, 0, sizeof(BinaryAddr));
 			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6)
-				EDNS_Subnet_Header->Netmask_Source = sizeof(in6_addr) * BYTES_TO_BITS; //No recommendation is provided for IPv6 at this time so keep all bits, see https://tools.ietf.org/html/draft-vandergaast-edns-client-subnet-02.
-			else 
-				EDNS_Subnet_Header->Netmask_Source = (uint8_t)Parameter.LocalhostSubnet.IPv6->Prefix;
+			{
+			//Default prefix of IPv6 address, please visit RFC 7871(https://tools.ietf.org/html/rfc7871).
+				if (Parameter.LocalMachineSubnet_IPv6 != nullptr)
+					EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv6->second);
+				else 
+					EDNS_Subnet_Header->Netmask_Source = EDNS_CLIENT_SUBNET_SOURCE_PREFIX_IPV6;
+
+			//Keep bits of address.
+				BinaryAddr = (reinterpret_cast<const sockaddr_in6 *>(&LocalSocketData->SockAddr))->sin6_addr;
+				if (EDNS_Subnet_Header->Netmask_Source < sizeof(in6_addr) * BYTES_TO_BITS / 2U)
+				{
+					*reinterpret_cast<uint64_t *>(&BinaryAddr) = hton64(ntoh64(*reinterpret_cast<uint64_t *>(&BinaryAddr)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS / 2U - EDNS_Subnet_Header->Netmask_Source))); //Mark high 64 bits.
+					*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U) = 0; //Delete low 64 bits.
+				}
+				else {
+					*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U) = hton64(ntoh64(*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS - EDNS_Subnet_Header->Netmask_Source))); //Mark low 64 bits.
+				}
+			}
+			else {
+				EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv6->second);
+			}
+
+		//Length check
 			Packet->Length += sizeof(edns_client_subnet);
 			Packet->EDNS_Record += sizeof(edns_client_subnet);
-			
-		//Length check
-			if (Packet->Length + sizeof(in6_addr) > Packet->BufferSize)
+			if (Packet->Length + sizeof(in6_addr) >= Packet->BufferSize)
 				return true;
 
 		//Copy subnet address.
-			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6)
-				*(in6_addr *)(Packet->Buffer + Packet->Length) = ((PSOCKADDR_IN6)&LocalSocketData->SockAddr)->sin6_addr;
+			size_t PrefixBytes = 0;
+			if (EDNS_Subnet_Header->Netmask_Source % BYTES_TO_BITS > 0)
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS + sizeof(uint8_t);
 			else 
-				*(in6_addr *)(Packet->Buffer + Packet->Length) = ((PSOCKADDR_IN6)&Parameter.LocalhostSubnet.IPv6->Address)->sin6_addr;
-			EDNS_Subnet_Header->Length = htons((uint16_t)(sizeof(uint16_t) + sizeof(uint8_t) * 2U + sizeof(in6_addr)));
-			DNS_Record_OPT->DataLength = htons(sizeof(edns_client_subnet) + sizeof(in6_addr));
-			Packet->Length += sizeof(in6_addr);
-			Packet->EDNS_Record += sizeof(in6_addr);
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS;
+			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET6)
+				*reinterpret_cast<in6_addr *>(Packet->Buffer + Packet->Length) = BinaryAddr;
+			else 
+				*reinterpret_cast<in6_addr *>(Packet->Buffer + Packet->Length) = (reinterpret_cast<sockaddr_in6 *>(&Parameter.LocalMachineSubnet_IPv6->first))->sin6_addr;
+			EDNS_Subnet_Header->Length = htons(static_cast<uint16_t>(sizeof(uint16_t) + sizeof(uint8_t) * 2U + PrefixBytes));
+			DNS_Record_OPT->DataLength = htons(static_cast<uint16_t>(sizeof(edns_client_subnet) + PrefixBytes));
+			Packet->Length += PrefixBytes;
+			Packet->EDNS_Record += PrefixBytes;
 		}
-	//IPv4
-		else if (DNS_Query->Type == htons(DNS_RECORD_A) && 
-			(Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET || 
-			Parameter.LocalhostSubnet.IPv4 != nullptr))
+	//A record(IPv4)
+		else if (ntohs(DNS_Query->Type) == DNS_TYPE_A && 
+			((Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET) || 
+			Parameter.LocalMachineSubnet_IPv4 != nullptr))
 		{
 		//Make EDNS Subnet header.
 			EDNS_Subnet_Header->Code = htons(EDNS_CODE_CSUBNET);
 			EDNS_Subnet_Header->Family = htons(ADDRESS_FAMILY_IPV4);
+
+		//Mark network prefix.
+			in_addr BinaryAddr;
+			memset(&BinaryAddr, 0, sizeof(BinaryAddr));
 			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET)
-				EDNS_Subnet_Header->Netmask_Source = (sizeof(in_addr) - 1U) * BYTES_TO_BITS; //Keep 24 bits of IPv4 address, see https://tools.ietf.org/html/draft-vandergaast-edns-client-subnet-02.
-			else 
-				EDNS_Subnet_Header->Netmask_Source = (uint8_t)Parameter.LocalhostSubnet.IPv4->Prefix;
+			{
+			//Default prefix of IPv4 address, please visit RFC 7871(https://tools.ietf.org/html/rfc7871).
+				if (Parameter.LocalMachineSubnet_IPv4 != nullptr)
+					EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv4->second);
+				else 
+					EDNS_Subnet_Header->Netmask_Source = EDNS_CLIENT_SUBNET_SOURCE_PREFIX_IPV4;
+
+			//Keep bits of address.
+				BinaryAddr = (reinterpret_cast<const sockaddr_in *>(&LocalSocketData->SockAddr))->sin_addr;
+				BinaryAddr.s_addr = htonl(ntohl(BinaryAddr.s_addr) & (UINT32_MAX << (sizeof(in_addr) * BYTES_TO_BITS - EDNS_Subnet_Header->Netmask_Source)));
+			}
+			else {
+				EDNS_Subnet_Header->Netmask_Source = static_cast<uint8_t>(Parameter.LocalMachineSubnet_IPv4->second);
+			}
+
+		//Length check
 			Packet->Length += sizeof(edns_client_subnet);
 			Packet->EDNS_Record += sizeof(edns_client_subnet);
-			
-		//Length check
-			if (Packet->Length + sizeof(in_addr) > Packet->BufferSize)
+			if (Packet->Length + sizeof(in_addr) >= Packet->BufferSize)
 				return true;
 
 		//Copy subnet address.
-			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET)
-				*(in_addr *)(Packet->Buffer + Packet->Length) = ((PSOCKADDR_IN)&LocalSocketData->SockAddr)->sin_addr;
+			size_t PrefixBytes = 0;
+			if (EDNS_Subnet_Header->Netmask_Source % BYTES_TO_BITS > 0)
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS + sizeof(uint8_t);
 			else 
-				*(in_addr *)(Packet->Buffer + Packet->Length) = ((PSOCKADDR_IN)&Parameter.LocalhostSubnet.IPv4->Address)->sin_addr;
-			EDNS_Subnet_Header->Length = htons((uint16_t)(sizeof(uint16_t) + sizeof(uint8_t) * 2U + sizeof(in_addr)));
-			DNS_Record_OPT->DataLength = htons(sizeof(edns_client_subnet) + sizeof(in_addr));
-			Packet->Length += sizeof(in_addr);
-			Packet->EDNS_Record += sizeof(in_addr);
+				PrefixBytes = EDNS_Subnet_Header->Netmask_Source / BYTES_TO_BITS;
+			if (Parameter.EDNS_ClientSubnet_Relay && LocalSocketData != nullptr && LocalSocketData->SockAddr.ss_family == AF_INET)
+				*reinterpret_cast<in_addr *>(Packet->Buffer + Packet->Length) = BinaryAddr;
+			else 
+				*reinterpret_cast<in_addr *>(Packet->Buffer + Packet->Length) = (reinterpret_cast<sockaddr_in *>(&Parameter.LocalMachineSubnet_IPv4->first))->sin_addr;
+			EDNS_Subnet_Header->Length = htons(static_cast<uint16_t>(sizeof(uint16_t) + sizeof(uint8_t) * 2U + PrefixBytes));
+			DNS_Record_OPT->DataLength = htons(static_cast<uint16_t>(sizeof(edns_client_subnet) + PrefixBytes));
+			Packet->Length += PrefixBytes;
+			Packet->EDNS_Record += PrefixBytes;
 		}
 	}
 
@@ -601,18 +720,19 @@ bool __fastcall AddEDNSLabelToAdditionalRR(
 }
 
 //Make Compression Pointer Mutation
-size_t __fastcall MakeCompressionPointerMutation(
-	_Inout_ char *Buffer, 
-	_In_ const size_t Length)
+size_t MakeCompressionPointerMutation(
+	uint8_t * const Buffer, 
+	const size_t Length, 
+	const size_t MaxLen)
 {
 //Ramdom number distribution initialization
-	std::uniform_int_distribution<int> RamdomDistribution(0, 2U);
-	size_t Index = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
+	std::uniform_int_distribution<uint64_t> RamdomDistribution(0, 2U);
+	auto Index = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
 
 //Check Compression Pointer Mutation options.
 	switch (Index)
 	{
-		case 0:
+		case CPM_POINTER_TYPE_HEADER:
 		{
 			if (!Parameter.CPM_PointerToHeader)
 			{
@@ -622,17 +742,17 @@ size_t __fastcall MakeCompressionPointerMutation(
 					Index += 2U;
 			}
 		}break;
-		case 1U:
+		case CPM_POINTER_TYPE_RR:
 		{
 			if (!Parameter.CPM_PointerToRR)
 			{
 				if (Parameter.CPM_PointerToHeader)
 					--Index;
-				else //Pointer to Additional(1)
+				else //Pointer to Additional(2)
 					Index += 1U;
 			}
 		}break;
-		case 2U:
+		case CPM_POINTER_TYPE_ADDITIONAL:
 		{
 			if (!Parameter.CPM_PointerToAdditional)
 			{
@@ -649,37 +769,30 @@ size_t __fastcall MakeCompressionPointerMutation(
 	}
 
 //Make Compression Pointer Mutation.
-	if (Index == 0) //Pointer to header, like "[DNS Header][Domain][Pointer][Query]" and the pointer is point to [DNS Header].
+	if (Index == CPM_POINTER_TYPE_HEADER) //Pointer to header, like "<DNS Header><Domain><Pointer><Query>" and point to <DNS Header>.
 	{
-		memmove_s(Buffer + Length - sizeof(dns_qry) + 1U, sizeof(dns_qry), Buffer + Length - sizeof(dns_qry), sizeof(dns_qry));
-		*(Buffer + Length - sizeof(dns_qry) - 1U) = DNS_POINTER_8_BITS_STRING;
+		memmove_s(Buffer + Length - sizeof(dns_qry) + NULL_TERMINATE_LENGTH, sizeof(dns_qry), Buffer + Length - sizeof(dns_qry), sizeof(dns_qry));
+		*(Buffer + Length - sizeof(dns_qry) - 1U) = static_cast<uint8_t>(DNS_POINTER_8_BITS_STRING);
 
-	//Minimum supported system of GetTickCount64() is Windows Vista(Windows XP with SP3 support).
-	#if (defined(PLATFORM_WIN32) && !defined(PLATFORM_WIN64))
-		if (GlobalRunningStatus.FunctionPTR_GetTickCount64 != nullptr)
-			Index = (*GlobalRunningStatus.FunctionPTR_GetTickCount64)() % 4U;
-		else 
-			Index = GetTickCount() % 4U;
-	#else
-		Index = GetTickCount64() % 4U;
-	#endif
+	//Choose a ramdom one.
+		Index = GetCurrentSystemTime() % 4U;
 		switch (Index)
 		{
 			case 0:
 			{
-				*(Buffer + Length - sizeof(dns_qry)) = '\x04';
+				*(Buffer + Length - sizeof(dns_qry)) = ('\x04');
 			}break;
 			case 1U:
 			{
-				*(Buffer + Length - sizeof(dns_qry)) = '\x06';
+				*(Buffer + Length - sizeof(dns_qry)) = ('\x06');
 			}break;
 			case 2U:
 			{
-				*(Buffer + Length - sizeof(dns_qry)) = '\x08';
+				*(Buffer + Length - sizeof(dns_qry)) = ('\x08');
 			}break;
 			case 3U:
 			{
-				*(Buffer + Length - sizeof(dns_qry)) = '\x0A';
+				*(Buffer + Length - sizeof(dns_qry)) = ('\x0A');
 			}break;
 			default:
 			{
@@ -690,45 +803,47 @@ size_t __fastcall MakeCompressionPointerMutation(
 		return Length + 1U;
 	}
 	else {
-		auto DNS_Query = std::make_shared<dns_qry>();
-		memset(DNS_Query.get(), 0, sizeof(dns_qry));
-		memcpy_s(DNS_Query.get(), sizeof(dns_qry), Buffer + DNS_PACKET_QUERY_LOCATE(Buffer), sizeof(dns_qry));
-		memmove_s(Buffer + sizeof(dns_hdr) + sizeof(uint16_t) + sizeof(dns_qry), Length, Buffer + sizeof(dns_hdr), strnlen_s(Buffer + sizeof(dns_hdr), Length - sizeof(dns_hdr)) + 1U);
-		memcpy_s(Buffer + sizeof(dns_hdr) + sizeof(uint16_t), Length - sizeof(dns_hdr) - sizeof(uint16_t), DNS_Query.get(), sizeof(dns_qry));
-		*(Buffer + sizeof(dns_hdr)) = DNS_POINTER_8_BITS_STRING;
-		*(Buffer + sizeof(dns_hdr) + 1U) = '\x12';
+		dns_qry DNS_Query;
+		memset(&DNS_Query, 0, sizeof(dns_qry));
+		memcpy_s(&DNS_Query, sizeof(dns_qry), Buffer + DNS_PACKET_QUERY_LOCATE(Buffer), sizeof(DNS_Query));
+		memmove_s(Buffer + sizeof(dns_hdr) + sizeof(uint16_t) + sizeof(dns_qry), MaxLen - sizeof(dns_hdr) - sizeof(uint16_t) - sizeof(dns_qry), Buffer + sizeof(dns_hdr), strnlen_s(reinterpret_cast<const char *>(Buffer) + sizeof(dns_hdr), Length - sizeof(dns_hdr)) + 1U);
+		memcpy_s(Buffer + sizeof(dns_hdr) + sizeof(uint16_t), MaxLen - sizeof(dns_hdr) - sizeof(uint16_t), &DNS_Query, sizeof(DNS_Query));
+		*(Buffer + sizeof(dns_hdr)) = static_cast<uint8_t>(DNS_POINTER_8_BITS_STRING);
+		*(Buffer + sizeof(dns_hdr) + 1U) = ('\x12');
 
-		if (Index == 1U) //Pointer to RR, like "[DNS Header][Pointer][Query][Domain]" and the pointer is point to [Domain].
+	//Pointer to RR, like "<DNS Header><Pointer><Query><Domain>" and point to <Domain>.
+		if (Index == CPM_POINTER_TYPE_RR)
 		{
 			return Length + 2U;
 		}
-		else { //Pointer to Additional, like "[DNS Header][Pointer][Query][Additional]" and the pointer is point to domain in [Additional].
-			auto DNS_Header = (pdns_hdr)Buffer;
+	//Pointer to Additional, like "<DNS Header><Pointer><Query><Additional>" and point to domain in <Additional>.
+		else {
+			const auto DNS_Header = reinterpret_cast<dns_hdr *>(Buffer);
 			DNS_Header->Additional = htons(U16_NUM_ONE);
 
 		//Ramdom number distribution initialization
-			std::uniform_int_distribution<int> RamdomDistribution_Additional(0, UINT32_MAX);
+			std::uniform_int_distribution<uint32_t> RamdomDistribution_Additional(0, UINT32_MAX);
 
 		//Make records.
-			if (DNS_Query->Type == htons(DNS_RECORD_AAAA))
+			if (ntohs(DNS_Query.Type) == DNS_TYPE_AAAA)
 			{
-				auto DNS_Record_AAAA = (pdns_record_aaaa)(Buffer + Length);
-				DNS_Record_AAAA->Type = htons(DNS_RECORD_AAAA);
-				DNS_Record_AAAA->Classes = htons(DNS_CLASS_IN);
+				const auto DNS_Record_AAAA = reinterpret_cast<dns_record_aaaa *>(Buffer + Length);
+				DNS_Record_AAAA->Type = htons(DNS_TYPE_AAAA);
+				DNS_Record_AAAA->Classes = htons(DNS_CLASS_INTERNET);
 				DNS_Record_AAAA->TTL = htonl(RamdomDistribution_Additional(*GlobalRunningStatus.RamdomEngine));
 				DNS_Record_AAAA->Length = htons(sizeof(in6_addr));
-				for (Index = 0;Index < sizeof(in6_addr) / sizeof(uint16_t);++Index)
-					DNS_Record_AAAA->Addr.s6_words[Index] = htons((uint16_t)RamdomDistribution_Additional(*GlobalRunningStatus.RamdomEngine));
+				for (Index = 0;Index < sizeof(in6_addr) / sizeof(uint8_t);++Index)
+					DNS_Record_AAAA->Address.s6_addr[Index] = static_cast<uint8_t>(RamdomDistribution_Additional(*GlobalRunningStatus.RamdomEngine));
 
 				return Length + sizeof(dns_record_aaaa);
 			}
-			else {
-				auto DNS_Record_A = (pdns_record_a)(Buffer + Length);
-				DNS_Record_A->Type = htons(DNS_RECORD_A);
-				DNS_Record_A->Classes = htons(DNS_CLASS_IN);
+			else { //A record
+				const auto DNS_Record_A = reinterpret_cast<dns_record_a *>(Buffer + Length);
+				DNS_Record_A->Type = htons(DNS_TYPE_A);
+				DNS_Record_A->Classes = htons(DNS_CLASS_INTERNET);
 				DNS_Record_A->TTL = htonl(RamdomDistribution_Additional(*GlobalRunningStatus.RamdomEngine));
 				DNS_Record_A->Length = htons(sizeof(in_addr));
-				DNS_Record_A->Addr.s_addr = htonl(RamdomDistribution_Additional(*GlobalRunningStatus.RamdomEngine));
+				DNS_Record_A->Address.s_addr = htonl(RamdomDistribution_Additional(*GlobalRunningStatus.RamdomEngine));
 
 				return Length + sizeof(dns_record_a);
 			}

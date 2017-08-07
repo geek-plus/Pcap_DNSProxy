@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
-// A local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2015 Chengr28
+// Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
+// Copyright (C) 2012-2017 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -17,36 +17,33 @@
 // Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
+#ifndef PCAP_DNSPROXY_NETWORK_H
+#define PCAP_DNSPROXY_NETWORK_H
+
 #include "Base.h"
 
 //Global variables
 extern CONFIGURATION_TABLE Parameter;
 extern GLOBAL_STATUS GlobalRunningStatus;
 extern ALTERNATE_SWAP_TABLE AlternateSwapList;
-#if defined(ENABLE_PCAP)
-	extern std::deque<OUTPUT_PACKET_TABLE> OutputPacketList;
-	extern std::mutex OutputPacketListLock;
+#if defined(ENABLE_LIBSODIUM)
+extern DNSCURVE_CONFIGURATION_TABLE DNSCurveParameter;
 #endif
+extern std::deque<SOCKET_MARKING_DATA> SocketMarkingList;
+#if defined(ENABLE_PCAP)
+extern std::deque<OUTPUT_PACKET_TABLE> OutputPacketList;
+extern std::mutex OutputPacketListLock;
+#endif
+extern std::mutex SocketMarkingLock;
 
 //Functions
-bool __fastcall SelectTargetSocket(
-	_Out_ SOCKET_DATA *TargetSocketData, 
-	_Outptr_opt_ bool **IsAlternate, 
-	_Outptr_opt_ size_t **AlternateTimeoutTimes, 
-	_In_ const uint16_t Protocol, 
-	_In_ const bool IsLocal);
-bool __fastcall SelectTargetSocketMulti(
-	_Inout_ std::vector<SOCKET_DATA> &TargetSocketDataList, 
-	_In_ const uint16_t Protocol);
-SSIZE_T __fastcall SelectingResult(
-	_In_ const uint16_t Protocol, 
-	_Inout_ std::vector<SOCKET_DATA> &SocketDataList, 
-	_Inout_ std::vector<SOCKET_SELECTING_DATA> &SocketSelectingList, 
-	_Out_ char *OriginalRecv, 
-	_In_ const size_t RecvSize, 
-	_In_ const bool IsLocal, 
-	_In_ const bool NoCheck);
-void __fastcall MarkPortToList(
-	_In_ const uint16_t Protocol, 
-	_In_opt_ const SOCKET_DATA *LocalSocketData, 
-	_In_ std::vector<SOCKET_DATA> &SocketDataList);
+ssize_t SelectingResultOnce(
+	const REQUEST_PROCESS_TYPE RequestType, 
+	const uint16_t Protocol, 
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<SOCKET_SELECTING_ONCE_TABLE> *SocketSelectingList, 
+	void * const OriginalDNSCurveSocketSelectingList, 
+	uint8_t * const OriginalRecv, 
+	const size_t RecvSize, 
+	const SOCKET_DATA * const LocalSocketData);
+#endif

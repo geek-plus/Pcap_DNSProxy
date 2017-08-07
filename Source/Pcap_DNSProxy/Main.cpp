@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
-// A local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2015 Chengr28
+// Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
+// Copyright (C) 2012-2017 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -23,436 +23,90 @@
 #if defined(PLATFORM_WIN)
 int wmain(
 	int argc, 
-	wchar_t* argv[])
+	wchar_t *argv[])
 {
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
 int main(
 	int argc, 
 	char *argv[])
 {
 #endif
-
 //Get commands.
-	if (argc > 0)
-	{
-		if (!ReadCommand(argc, argv))
-			return EXIT_SUCCESS;
-	}
-	else {
+	if (argc < COMMAND_MIN_COUNT)
 		return EXIT_FAILURE;
-	}
-
+//Read commands.
+	else if (!ReadCommand(argc, argv))
+		return EXIT_SUCCESS;
 //Read configuration file.
-	if (!ReadParameter(true))
+	else if (!ReadParameter(true))
+		return EXIT_FAILURE;
+//Process already exists check
+	else if (Parameter.IsProcessUnique && !CheckProcessExists())
 		return EXIT_FAILURE;
 
-//DNSCurve initialization
-#if defined(ENABLE_LIBSODIUM)
-	if (Parameter.DNSCurve)
+//Handle the system signal.
+#if defined(PLATFORM_WIN)
+	if (SetConsoleCtrlHandler(
+			reinterpret_cast<PHANDLER_ROUTINE>(CtrlHandler), 
+			TRUE) == 0)
 	{
-		DNSCurveParameterModificating.SetToMonitorItem();
+		PrintError(LOG_LEVEL_TYPE::LEVEL_1, LOG_ERROR_TYPE::SYSTEM, L"Set console control handler error", GetLastError(), nullptr, 0);
+		return EXIT_FAILURE;
+	}
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+	errno = 0;
+	if (signal(SIGHUP, SIG_Handler) == SIG_ERR || signal(SIGINT, SIG_Handler) == SIG_ERR || signal(SIGQUIT, SIG_Handler) == SIG_ERR || 
+		signal(SIGTERM, SIG_Handler) == SIG_ERR)
+	{
+		PrintError(LOG_LEVEL_TYPE::LEVEL_1, LOG_ERROR_TYPE::SYSTEM, L"Handle the system signal error", errno, nullptr, 0);
+		return EXIT_FAILURE;
+	}
 
-	//Encryption mode initialization
-		if (DNSCurveParameter.IsEncryption)
-			DNSCurveInit();
+//Set system signal handler to ignore EPIPE signal when transmission with socket.
+	errno = 0;
+	if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+	{
+		PrintError(LOG_LEVEL_TYPE::LEVEL_1, LOG_ERROR_TYPE::SYSTEM, L"Ignore system signal error", errno, nullptr, 0);
+		return EXIT_FAILURE;
 	}
 #endif
 
-//Mark Local DNS address to PTR Records, read Parameter(Monitor mode), IPFilter and Hosts.
-	ParameterModificating.SetToMonitorItem();
-	std::thread NetworkInformationMonitorThread(std::bind(NetworkInformationMonitor));
-	NetworkInformationMonitorThread.detach();
-	std::thread ReadParameterThread(std::bind(ReadParameter, false));
-	ReadParameterThread.detach();
-	std::thread ReadHostsThread(std::bind(ReadHosts));
-	ReadHostsThread.detach();
-	if (Parameter.OperationMode == LISTEN_MODE_CUSTOM || Parameter.DataCheck_Blacklist || Parameter.LocalRouting)
-	{
-		std::thread ReadIPFilterThread(std::bind(ReadIPFilter));
-		ReadIPFilterThread.detach();
-	}
+//Launch all monitors and wait for multiple threads to work.
+	MonitorLauncher();
+	Sleep(STANDARD_TIMEOUT);
 
+//Main process initialization
 #if defined(PLATFORM_WIN)
-//Service initialization and start service.
-	SERVICE_TABLE_ENTRYW ServiceTable[]{{SYSTEM_SERVICE_NAME, (LPSERVICE_MAIN_FUNCTIONW)ServiceMain}, {nullptr, nullptr}};
-	if (!StartServiceCtrlDispatcherW(ServiceTable))
+	const SERVICE_TABLE_ENTRYW ServiceTable[]{{SYSTEM_SERVICE_NAME, reinterpret_cast<LPSERVICE_MAIN_FUNCTIONW>(ServiceMain)}, {nullptr, nullptr}}; //Service beginning
+	if (StartServiceCtrlDispatcherW(ServiceTable) == 0)
 	{
-		GlobalRunningStatus.Console = true;
-		auto ErrorCode = GetLastError();
-		
 	//Print to screen.
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf_s(stderr, L"System Error: Service start error, error code is %lu.\n", ErrorCode);
-		fwprintf_s(stderr, L"System Error: Program will continue to run in console mode.\n");
-		fwprintf_s(stderr, L"Please ignore these error messages if you want to run in console mode.\n\n");
-		ScreenMutex.unlock();
+		if (GetLastError() == 0)
+		{
+			std::wstring Message(L"[System Error] Service start error.\n");
+			std::lock_guard<std::mutex> ScreenMutex(ScreenLock);
+			PrintToScreen(false, Message.c_str());
+			PrintToScreen(false, L"[Notice] Program will continue to run in console mode.\n");
+			PrintToScreen(false, L"[Notice] Please ignore these error messages if you want to run in console mode.\n\n");
+		}
+		else {
+			std::wstring Message(L"[System Error] Service start error");
+			ErrorCodeToMessage(LOG_ERROR_TYPE::SYSTEM, GetLastError(), Message);
+			Message.append(L".\n");
+			std::lock_guard<std::mutex> ScreenMutex(ScreenLock);
+			PrintToScreen(false, Message.c_str(), GetLastError());
+			PrintToScreen(false, L"[Notice] Program will continue to run in console mode.\n");
+			PrintToScreen(false, L"[Notice] Please ignore these error messages if you want to run in console mode.\n\n");
+		}
 
-	//Handle the system signal and start all monitors.
-		SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
-		MonitorInit();
+	//Main process
+		if (!MonitorInit())
+			return EXIT_FAILURE;
 	}
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	MonitorInit();
-#endif
-
-//Wait a moment to close all thread handles.
-#if defined(PLATFORM_WIN)
-	Sleep(SHORTEST_FILEREFRESH_TIME * SECOND_TO_MILLISECOND);
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+	if (!MonitorInit())
+		return EXIT_FAILURE;
 #endif
 
 	return EXIT_SUCCESS;
 }
-
-//Read commands from main program
-#if defined(PLATFORM_WIN)
-bool __fastcall ReadCommand(
-	_In_ int argc, 
-	_In_ wchar_t *argv[])
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-bool ReadCommand(
-	int argc, 
-	char *argv[])
-#endif
-{
-//Path initialization
-#if defined(PLATFORM_WIN)
-	if (!FileNameInit(argv[0]))
-		return false;
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	std::shared_ptr<char> FileName(new char[PATH_MAX + 1U]());
-	memset(FileName.get(), 0, PATH_MAX + 1U);
-	if (getcwd(FileName.get(), PATH_MAX) == nullptr)
-	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf(stderr, L"Path initialization error.\n");
-
-		return false;
-	}
-	if (!FileNameInit(FileName.get()))
-		return false;
-	FileName.reset();
-#endif
-
-//Screen output buffer setting
-	if (setvbuf(stderr, NULL, _IONBF, 0) != 0)
-	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf_s(stderr, L"Screen output buffer setting error, error code is %d.\n", errno);
-		ScreenLock.unlock();
-		PrintError(LOG_ERROR_NETWORK, L"Screen output buffer setting error", errno, nullptr, 0);
-
-		return false;
-	}
-
-//Winsock initialization
-#if defined(PLATFORM_WIN)
-	auto WSAInitialization = std::make_shared<WSAData>();
-	if (WSAStartup(MAKEWORD(WINSOCK_VERSION_HIGH, WINSOCK_VERSION_LOW), WSAInitialization.get()) != 0 || 
-		LOBYTE(WSAInitialization->wVersion) != WINSOCK_VERSION_LOW || HIBYTE(WSAInitialization->wVersion) != WINSOCK_VERSION_HIGH)
-	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf_s(stderr, L"Winsock initialization error, error code is %d.\n", WSAGetLastError());
-		ScreenLock.unlock();
-		PrintError(LOG_ERROR_NETWORK, L"Winsock initialization error", WSAGetLastError(), nullptr, 0);
-
-		return false;
-	}
-	else {
-		GlobalRunningStatus.Initialization_WinSock = true;
-	}
-
-//Read commands.
-	std::wstring Commands;
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	std::string Commands;
-#endif
-	for (size_t Index = 1U;(SSIZE_T)Index < argc;++Index)
-	{
-		Commands = argv[Index];
-
-	//Flush DNS Cache from user.
-		if (Commands == COMMAND_FLUSH_DNS)
-		{
-		#if defined(PLATFORM_WIN)
-			FlushDNSMailSlotSender();
-		#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-			FlushDNSFIFOSender();
-		#endif
-
-			return false;
-		}
-	//Windows Firewall Test in first start.
-	#if defined(PLATFORM_WIN)
-		else if (Commands == COMMAND_FIREWALL_TEST)
-		{
-			if (!FirewallTest(AF_INET6) && !FirewallTest(AF_INET))
-			{
-				std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-				fwprintf_s(stderr, L"Windows Firewall Test error, error code is %d.\n", WSAGetLastError());
-				ScreenMutex.unlock();
-				PrintError(LOG_ERROR_NETWORK, L"Windows Firewall Test error", WSAGetLastError(), nullptr, 0);
-			}
-
-			return false;
-		}
-	#endif
-	//Set system daemon.
-	#if defined(PLATFORM_LINUX)
-		else if (Commands == COMMAND_DISABLE_DAEMON)
-		{
-			GlobalRunningStatus.Daemon = false;
-		}
-	#endif
-	//Print current version.
-		else if (Commands == COMMAND_LONG_PRINT_VERSION || Commands == COMMAND_SHORT_PRINT_VERSION)
-		{
-			std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-			fwprintf_s(stderr, L"Pcap_DNSProxy ");
-			fwprintf_s(stderr, FULL_VERSION);
-			fwprintf_s(stderr, L"\n");
-
-			return false;
-		}
-	//Print library version.
-		else if (Commands == COMMAND_LIB_VERSION)
-		{
-			std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-
-		#if (defined(ENABLE_LIBSODIUM) || defined(ENABLE_PCAP))
-			std::wstring LibVersion;
-
-			//LibSodium version
-			#if defined(ENABLE_LIBSODIUM)
-				if (MBSToWCSString(SODIUM_VERSION_STRING, strlen(SODIUM_VERSION_STRING), LibVersion))
-					fwprintf_s(stderr, L"LibSodium version %ls\n", LibVersion.c_str());
-			#endif
-
-			//WinPcap or LibPcap version
-			#if defined(ENABLE_PCAP)
-				if (MBSToWCSString(pcap_lib_version(), strlen(pcap_lib_version()), LibVersion))
-					fwprintf_s(stderr, L"%ls\n", LibVersion.c_str());
-			#endif
-		#else
-			fwprintf(stderr, L"No any available libraries.\n");
-		#endif
-
-			return false;
-		}
-	//Print help messages.
-		else if (Commands == COMMAND_LONG_HELP || Commands == COMMAND_SHORT_HELP)
-		{
-			std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-
-			fwprintf_s(stderr, L"Pcap_DNSProxy ");
-			fwprintf_s(stderr, FULL_VERSION);
-		#if defined(PLATFORM_WIN)
-			fwprintf_s(stderr, L"(Windows)\n");
-		#elif defined(PLATFORM_OPENWRT)
-			fwprintf(stderr, L"(OpenWrt)\n");
-		#elif defined(PLATFORM_LINUX)
-			fwprintf(stderr, L"(Linux)\n");
-		#elif defined(PLATFORM_MACX)
-			fwprintf(stderr, L"(Mac)\n");
-		#endif
-			fwprintf_s(stderr, COPYRIGHT_MESSAGE);
-			fwprintf_s(stderr, L"\nUsage: Please see ReadMe... files in Documents folder.\n");
-			fwprintf_s(stderr, L"   -v/--version:          Print current version on screen.\n");
-			fwprintf_s(stderr, L"   --lib-version:         Print current version of library on screen.\n");
-			fwprintf_s(stderr, L"   -h/--help:             Print help messages on screen.\n");
-			fwprintf_s(stderr, L"   --flush-dns:           Flush all DNS cache in program and system immediately.\n");
-		#if defined(PLATFORM_WIN)
-			fwprintf_s(stderr, L"   --first-setup:         Test local firewall.\n");
-		#endif
-			fwprintf_s(stderr, L"   -c/--config-file Path: Set path of configuration file.\n");
-		#if defined(PLATFORM_LINUX)
-			fwprintf(stderr, L"   --disable-daemon:      Disable daemon mode.\n");
-		#endif
-
-			return false;
-		}
-	//Set working directory from commands.
-		else if (Commands == COMMAND_LONG_SET_PATH || Commands == COMMAND_SHORT_SET_PATH)
-		{
-		//Commands check
-			if ((SSIZE_T)Index + 1 >= argc)
-			{
-				std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-				fwprintf(stderr, L"Commands error.\n");
-				ScreenMutex.unlock();
-				PrintError(LOG_ERROR_SYSTEM, L"Commands error", 0, nullptr, 0);
-
-				return false;
-			}
-			else {
-				++Index;
-				Commands = argv[Index];
-
-			//Path check.
-				if (Commands.length() > MAX_PATH)
-				{
-					std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-					fwprintf_s(stderr, L"Commands error.\n");
-					ScreenLock.unlock();
-					PrintError(LOG_ERROR_SYSTEM, L"Commands error", 0, nullptr, 0);
-
-					return false;
-				}
-				else {
-					if (!FileNameInit(Commands.c_str()))
-						return false;
-				}
-			}
-		}
-	}
-
-//Set system daemon.
-#if defined(PLATFORM_LINUX)
-	if (GlobalRunningStatus.Daemon && daemon(0, 0) == RETURN_ERROR)
-	{
-		PrintError(LOG_ERROR_SYSTEM, L"Set system daemon error", 0, nullptr, 0);
-		return false;
-	}
-#endif
-
-	return true;
-}
-
-//Get path of program from the main function parameter and Winsock initialization
-#if defined(PLATFORM_WIN)
-bool __fastcall FileNameInit(
-	_In_ const wchar_t *OriginalPath)
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-bool FileNameInit(
-	const char *OriginalPath)
-#endif
-{
-//Path process
-#if defined(PLATFORM_WIN)
-	GlobalRunningStatus.Path_Global->clear();
-	GlobalRunningStatus.Path_Global->push_back(OriginalPath);
-	GlobalRunningStatus.Path_Global->front().erase(GlobalRunningStatus.Path_Global->front().rfind(L"\\") + 1U);
-	for (size_t Index = 0;Index < GlobalRunningStatus.Path_Global->front().length();++Index)
-	{
-		if ((GlobalRunningStatus.Path_Global->front()).at(Index) == L'\\')
-		{
-			GlobalRunningStatus.Path_Global->front().insert(Index, L"\\");
-			++Index;
-		}
-	}
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	GlobalRunningStatus.sPath_Global->clear();
-	GlobalRunningStatus.sPath_Global->push_back(OriginalPath);
-	GlobalRunningStatus.sPath_Global->front().append("/");
-	std::wstring StringTemp;
-	if (!MBSToWCSString(OriginalPath, PATH_MAX + 1U, StringTemp))
-		return false;
-	StringTemp.append(L"/");
-	GlobalRunningStatus.Path_Global->clear();
-	GlobalRunningStatus.Path_Global->push_back(StringTemp);
-	StringTemp.clear();
-#endif
-
-//Get path of error/running status log file and mark start time.
-	GlobalRunningStatus.Path_ErrorLog->clear();
-	*GlobalRunningStatus.Path_ErrorLog = GlobalRunningStatus.Path_Global->front();
-	GlobalRunningStatus.Path_ErrorLog->append(L"Error.log");
-#if (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
-	GlobalRunningStatus.sPath_ErrorLog->clear();
-	*GlobalRunningStatus.sPath_ErrorLog = GlobalRunningStatus.sPath_Global->front();
-	GlobalRunningStatus.sPath_ErrorLog->append("Error.log");
-#endif
-	Parameter.PrintError = true;
-	GlobalRunningStatus.StartupTime = time(nullptr);
-
-	return true;
-}
-
-#if defined(PLATFORM_WIN)
-//Windows Firewall Test
-bool __fastcall FirewallTest(
-	_In_ const uint16_t Protocol)
-{
-//Initialization
-	auto SockAddr = std::make_shared<sockaddr_storage>();
-	memset(SockAddr.get(), 0, sizeof(sockaddr_storage));
-	SYSTEM_SOCKET FirewallSocket = 0;
-
-//Ramdom number distribution initialization
-	std::uniform_int_distribution<int> RamdomDistribution(DYNAMIC_MIN_PORT, UINT16_MAX - 1U);
-
-//IPv6
-	if (Protocol == AF_INET6)
-	{
-		((PSOCKADDR_IN6)SockAddr.get())->sin6_addr = in6addr_any;
-		((PSOCKADDR_IN6)SockAddr.get())->sin6_port = htons((uint16_t)RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-		SockAddr->ss_family = AF_INET6;
-		FirewallSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-
-	//Bind local socket.
-		if (!SocketSetting(FirewallSocket, SOCKET_SETTING_INVALID_CHECK, nullptr))
-		{
-			return false;
-		}
-		else if (bind(FirewallSocket, (PSOCKADDR)SockAddr.get(), sizeof(sockaddr_in6)) == SOCKET_ERROR)
-		{
-			((PSOCKADDR_IN6)SockAddr.get())->sin6_port = htons((uint16_t)RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-			size_t Index = 0;
-			while (bind(FirewallSocket, (PSOCKADDR)SockAddr.get(), sizeof(sockaddr_in6)) == SOCKET_ERROR)
-			{
-				if (Index < LOOP_MAX_TIMES && WSAGetLastError() == WSAEADDRINUSE)
-				{
-					((PSOCKADDR_IN6)SockAddr.get())->sin6_port = htons((uint16_t)RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-
-					++Index;
-					continue;
-				}
-				else {
-					shutdown(FirewallSocket, SD_BOTH);
-					closesocket(FirewallSocket);
-
-					return false;
-				}
-			}
-		}
-	}
-//IPv4
-	else {
-		((PSOCKADDR_IN)SockAddr.get())->sin_addr.s_addr = INADDR_ANY;
-		((PSOCKADDR_IN)SockAddr.get())->sin_port = htons((uint16_t)RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-		SockAddr->ss_family = AF_INET;
-		FirewallSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-	//Bind local socket.
-		if (!SocketSetting(FirewallSocket, SOCKET_SETTING_INVALID_CHECK, nullptr))
-		{
-			return false;
-		}
-		else if (bind(FirewallSocket, (PSOCKADDR)SockAddr.get(), sizeof(sockaddr_in)) == SOCKET_ERROR)
-		{
-			((PSOCKADDR_IN)SockAddr.get())->sin_port = htons((uint16_t)RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-			size_t Index = 0;
-			while (bind(FirewallSocket, (PSOCKADDR)SockAddr.get(), sizeof(sockaddr_in)) == SOCKET_ERROR)
-			{
-				if (Index < LOOP_MAX_TIMES && WSAGetLastError() == WSAEADDRINUSE)
-				{
-					((PSOCKADDR_IN)SockAddr.get())->sin_port = htons((uint16_t)RamdomDistribution(*GlobalRunningStatus.RamdomEngine));
-
-					++Index;
-					continue;
-				}
-				else {
-					shutdown(FirewallSocket, SD_BOTH);
-					closesocket(FirewallSocket);
-
-					return false;
-				}
-			}
-		}
-	}
-
-//Close socket.
-	shutdown(FirewallSocket, SD_BOTH);
-	closesocket(FirewallSocket);
-	return true;
-}
-#endif

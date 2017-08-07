@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
-// A local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2015 Chengr28
+// Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
+// Copyright (C) 2012-2017 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -20,67 +20,244 @@
 #include "Service.h"
 
 #if defined(PLATFORM_WIN)
-//Catch Control-C exception from keyboard.
+//Security attributes and descriptor initialization
+bool SystemSecurityInit(
+	const ACL * const ACL_Buffer, 
+	SECURITY_ATTRIBUTES &SecurityAttributes, 
+	SECURITY_DESCRIPTOR &SecurityDescriptor, 
+	PSID &SID_Value)
+{
+//Initialize security descriptor.
+	if (InitializeSecurityDescriptor(
+			&SecurityDescriptor, 
+			SECURITY_DESCRIPTOR_REVISION) == 0 || 
+		InitializeAcl(
+			const_cast<ACL *>(ACL_Buffer), 
+			FILE_BUFFER_SIZE, 
+			ACL_REVISION) == 0 || 
+		ConvertStringSidToSidW(
+			SID_ADMINISTRATORS_GROUP, 
+			&SID_Value) == 0 || 
+		AddAccessAllowedAce(
+			const_cast<ACL *>(ACL_Buffer), 
+			ACL_REVISION, 
+			GENERIC_ALL, 
+			SID_Value) == 0 || 
+		SetSecurityDescriptorDacl(
+			&SecurityDescriptor, 
+			true, 
+			const_cast<ACL *>(ACL_Buffer), 
+			false) == 0)
+	{
+		PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Security attributes and descriptor initialization error", GetLastError(), nullptr, 0);
+		if (SID_Value != nullptr)
+			LocalFree(SID_Value);
+
+		return false;
+	}
+	else {
+		SecurityAttributes.lpSecurityDescriptor = &SecurityDescriptor;
+		SecurityAttributes.bInheritHandle = true;
+	}
+
+	return true;
+}
+
+//Process already exists check
+bool CheckProcessExists(
+	void)
+{
+//System security initialization
+	std::unique_ptr<uint8_t[]> ACL_Buffer(new uint8_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	memset(ACL_Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
+	memset(&GlobalRunningStatus.Initialized_MutexSecurityAttributes, 0, sizeof(GlobalRunningStatus.Initialized_MutexSecurityAttributes));
+	memset(&GlobalRunningStatus.Initialized_MutexSecurityDescriptor, 0, sizeof(GlobalRunningStatus.Initialized_MutexSecurityDescriptor));
+	PSID SID_Value = nullptr;
+	if (!SystemSecurityInit(reinterpret_cast<const ACL *>(ACL_Buffer.get()), GlobalRunningStatus.Initialized_MutexSecurityAttributes, GlobalRunningStatus.Initialized_MutexSecurityDescriptor, SID_Value))
+	{
+		if (SID_Value != nullptr)
+			LocalFree(SID_Value);
+
+		return false;
+	}
+
+//Create mutex handle.
+	GlobalRunningStatus.Initialized_MutexHandle = CreateMutexW(&GlobalRunningStatus.Initialized_MutexSecurityAttributes, FALSE, MUTEX_EXISTS_NAME);
+	if (GlobalRunningStatus.Initialized_MutexHandle != nullptr)
+	{
+		if (GetLastError() == ERROR_ALREADY_EXISTS)
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Process already exists error", ERROR_ALREADY_EXISTS, nullptr, 0);
+			CloseHandle(GlobalRunningStatus.Initialized_MutexHandle);
+			GlobalRunningStatus.Initialized_MutexHandle = nullptr;
+			if (SID_Value != nullptr)
+				LocalFree(SID_Value);
+
+			return false;
+		}
+	}
+	else {
+		PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Process already exists error", GetLastError(), nullptr, 0);
+		if (SID_Value != nullptr)
+			LocalFree(SID_Value);
+
+		return false;
+	}
+
+//Free pointer.
+	if (SID_Value != nullptr)
+		LocalFree(SID_Value);
+
+	return true;
+}
+
+//Catch Control-C exception from keyboard
 BOOL WINAPI CtrlHandler(
-	_In_ const DWORD fdwCtrlType)
+	const DWORD ControlType)
 {
 //Print to screen.
-	if (GlobalRunningStatus.Console)
+	if (GlobalRunningStatus.IsConsole)
 	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		switch (fdwCtrlType)
+		switch (ControlType)
 		{
-			case CTRL_C_EVENT: //Handle the CTRL-C signal.
+		//Handle the CTRL-C signal.
+			case CTRL_C_EVENT:
 			{
-				fwprintf_s(stderr, L"Get Control-C.\n");
+				PrintToScreen(true, L"[Notice] Get Control-C.\n");
 			}break;
-			case CTRL_BREAK_EVENT: //Handle the CTRL-Break signal.
+		//Handle the CTRL-Break signal.
+			case CTRL_BREAK_EVENT:
 			{
-				fwprintf_s(stderr, L"Get Control-Break.\n");
+				PrintToScreen(true, L"[Notice] Get Control-Break.\n");
 			}break;
-			default: //Handle other signals.
+		//Handle other signals.
+			default:
 			{
-				fwprintf_s(stderr, L"Get closing signal.\n");
+				PrintToScreen(true, L"[Notice] Get closing signal.\n");
 			}break;
 		}
 	}
 
+//WinSock cleanup
+	if (GlobalRunningStatus.IsInitialized_WinSock)
+	{
+		WSACleanup();
+		GlobalRunningStatus.IsInitialized_WinSock = false;
+	}
+
+//Mutex handle cleanup
+	if (GlobalRunningStatus.Initialized_MutexHandle != nullptr)
+	{
+		ReleaseMutex(GlobalRunningStatus.Initialized_MutexHandle);
+		CloseHandle(GlobalRunningStatus.Initialized_MutexHandle);
+		GlobalRunningStatus.Initialized_MutexHandle = nullptr;
+	}
+
+//Close all file handles.
+	_fcloseall();
+
+//Exit process.
+//	exit(EXIT_SUCCESS);
 	return FALSE;
 }
 
 //Service Main function
 size_t WINAPI ServiceMain(
-	_In_ DWORD argc, 
-	_In_ LPTSTR *argv)
+	DWORD argc, 
+	LPTSTR *argv)
 {
-	ServiceStatusHandle = RegisterServiceCtrlHandlerW(SYSTEM_SERVICE_NAME, (LPHANDLER_FUNCTION)ServiceControl);
-	if (!ServiceStatusHandle || !UpdateServiceStatus(SERVICE_START_PENDING, NO_ERROR, 0, 1U, UPDATE_SERVICE_TIME))
+//Disable console mode printing.
+	GlobalRunningStatus.IsConsole = false;
+
+//Service initialization
+	ServiceStatusHandle = RegisterServiceCtrlHandlerW(
+		SYSTEM_SERVICE_NAME, 
+		reinterpret_cast<LPHANDLER_FUNCTION>(ServiceControl));
+	if (ServiceStatusHandle == nullptr)
 		return FALSE;
 
-	ServiceEvent = CreateEventW(0, TRUE, FALSE, 0);
-	if (!ServiceEvent || !UpdateServiceStatus(SERVICE_START_PENDING, NO_ERROR, 0, 2U, STANDARD_TIMEOUT) || !ExecuteService())
+//Update service status(Part 1).
+	if (UpdateServiceStatus(SERVICE_START_PENDING, NO_ERROR, 0, 1U, UPDATE_SERVICE_TIME) == FALSE)
+	{
+		CloseHandle(
+			ServiceStatusHandle);
 		return FALSE;
+	}
 
+//Create service event.
+	ServiceEvent = CreateEventW(
+		0, 
+		TRUE, 
+		FALSE, 
+		0);
+	if (ServiceEvent == nullptr)
+	{
+		CloseHandle(
+			ServiceStatusHandle);
+		return FALSE;
+	}
+
+//Update service status(Part 2).
+	if (UpdateServiceStatus(SERVICE_START_PENDING, NO_ERROR, 0, 2U, STANDARD_TIMEOUT) == FALSE)
+	{
+		CloseHandle(
+			ServiceStatusHandle);
+		CloseHandle(
+			ServiceEvent);
+		return FALSE;
+	}
+
+//Create thread.
+	const auto ServiceThread = ExecuteService();
+	if (ServiceThread == nullptr)
+	{
+		CloseHandle(
+			ServiceStatusHandle);
+		CloseHandle(
+			ServiceEvent);
+		return FALSE;
+	}
+
+//Update service status.
 	ServiceCurrentStatus = SERVICE_RUNNING;
-	if (!UpdateServiceStatus(SERVICE_RUNNING, NO_ERROR, 0, 0, 0))
+	if (UpdateServiceStatus(SERVICE_RUNNING, NO_ERROR, 0, 0, 0) == FALSE)
+	{
+		CloseHandle(
+			ServiceStatusHandle);
+		CloseHandle(
+			ServiceEvent);
+		CloseHandle(
+			ServiceThread);
 		return FALSE;
+	}
 
-	WaitForSingleObject(ServiceEvent, INFINITE);
-	CloseHandle(ServiceEvent);
+//Wait signal to shutdown.
+	WaitForSingleObject(
+		ServiceEvent, 
+		INFINITE);
+	CloseHandle(
+		ServiceStatusHandle);
+	CloseHandle(
+		ServiceEvent);
+	CloseHandle(
+		ServiceThread);
+
 	return EXIT_SUCCESS;
 }
 
 //Service controller
 size_t WINAPI ServiceControl(
-	_In_ const DWORD dwControlCode)
+	const DWORD ControlCode)
 {
-	switch(dwControlCode)
+	switch(ControlCode)
 	{
+	//Handle the shutdown signal.
 		case SERVICE_CONTROL_SHUTDOWN:
 		{
 			TerminateService();
 			return EXIT_SUCCESS;
 		}
+	//Handle the stop signal.
 		case SERVICE_CONTROL_STOP:
 		{
 			ServiceCurrentStatus = SERVICE_STOP_PENDING;
@@ -89,6 +266,7 @@ size_t WINAPI ServiceControl(
 
 			return EXIT_SUCCESS;
 		}
+	//Handle other signals.
 		default:
 		{
 			break;
@@ -100,25 +278,32 @@ size_t WINAPI ServiceControl(
 }
 
 //Start Main process
-BOOL WINAPI ExecuteService(
+HANDLE WINAPI ExecuteService(
 	void)
 {
-	DWORD dwThreadID = 0;
-	HANDLE hServiceThread = CreateThread(0, 0, (PTHREAD_START_ROUTINE)ServiceProc, nullptr, 0, &dwThreadID);
-	if (hServiceThread != nullptr)
+	DWORD ThreadID = 0;
+	const HANDLE ServiceThread = CreateThread(
+		0, 
+		0, 
+		reinterpret_cast<PTHREAD_START_ROUTINE>(ServiceProc), 
+		nullptr, 
+		0, 
+		&ThreadID);
+	if (ServiceThread != nullptr)
 	{
 		IsServiceRunning = TRUE;
-		return TRUE;
+		return ServiceThread;
 	}
 
-	return FALSE;
+	return nullptr;
 }
 
 //Service Main process thread
 DWORD WINAPI ServiceProc(
-	_In_ PVOID lpParameter)
+	PVOID ProcParameter)
 {
-	if (!IsServiceRunning || !MonitorInit())
+//Start main process.
+	if (IsServiceRunning == FALSE || !MonitorInit())
 	{
 		TerminateService();
 		return FALSE;
@@ -130,32 +315,33 @@ DWORD WINAPI ServiceProc(
 
 //Change status of service
 BOOL WINAPI UpdateServiceStatus(
-	_In_ const DWORD dwCurrentState, 
-	_In_ const DWORD dwWin32ExitCode, 
-	_In_ const DWORD dwServiceSpecificExitCode, 
-	_In_ const DWORD dwCheckPoint, 
-	_In_ const DWORD dwWaitHint)
+	const DWORD CurrentState, 
+	const DWORD WinExitCode, 
+	const DWORD ServiceSpecificExitCode, 
+	const DWORD CheckPoint, 
+	const DWORD WaitHint)
 {
-	auto ServiceStatus = std::make_shared<SERVICE_STATUS>();
-	memset(ServiceStatus.get(), 0, sizeof(SERVICE_STATUS));
-	ServiceStatus->dwServiceType = SERVICE_WIN32;
-	ServiceStatus->dwCurrentState = dwCurrentState;
-
-	if (dwCurrentState == SERVICE_START_PENDING)
-		ServiceStatus->dwControlsAccepted = 0;
+//Initialization
+	SERVICE_STATUS ServiceStatus;
+	memset(&ServiceStatus, 0, sizeof(ServiceStatus));
+	ServiceStatus.dwServiceType = SERVICE_WIN32;
+	ServiceStatus.dwCurrentState = CurrentState;
+	if (CurrentState == SERVICE_START_PENDING)
+		ServiceStatus.dwControlsAccepted = 0;
 	else 
-		ServiceStatus->dwControlsAccepted = (SERVICE_ACCEPT_STOP|SERVICE_ACCEPT_SHUTDOWN);
-
-	if (dwServiceSpecificExitCode == 0)
-		ServiceStatus->dwWin32ExitCode = dwWin32ExitCode;
+		ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+	if (ServiceSpecificExitCode == 0)
+		ServiceStatus.dwWin32ExitCode = WinExitCode;
 	else 
-		ServiceStatus->dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
+		ServiceStatus.dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
+	ServiceStatus.dwServiceSpecificExitCode = ServiceSpecificExitCode;
+	ServiceStatus.dwCheckPoint = CheckPoint;
+	ServiceStatus.dwWaitHint = WaitHint;
 
-	ServiceStatus->dwServiceSpecificExitCode = dwServiceSpecificExitCode;
-	ServiceStatus->dwCheckPoint = dwCheckPoint;
-	ServiceStatus->dwWaitHint = dwWaitHint;
-
-	if (!SetServiceStatus(ServiceStatusHandle, ServiceStatus.get()))
+//Service status setting
+	if (SetServiceStatus(
+			ServiceStatusHandle, 
+			&ServiceStatus) == 0)
 	{
 		TerminateService();
 		return FALSE;
@@ -175,238 +361,403 @@ void WINAPI TerminateService(
 	return;
 }
 
-//MailSlot of flush DNS cache Monitor
-bool __fastcall FlushDNSMailSlotMonitor(
+//Mailslot of flush DNS cache Monitor
+bool Flush_DNS_MailSlotMonitor(
 	void)
 {
-//System security setting
-	auto SecurityAttributes = std::make_shared<SECURITY_ATTRIBUTES>();
-	auto SecurityDescriptor = std::make_shared<SECURITY_DESCRIPTOR>();
-	std::shared_ptr<char> ACL_Buffer(new char[PACKET_MAXSIZE]());
-	memset(ACL_Buffer.get(), 0, PACKET_MAXSIZE);
+//System security initialization
+	std::unique_ptr<uint8_t[]> ACL_Buffer(new uint8_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	memset(ACL_Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
+	SECURITY_ATTRIBUTES SecurityAttributes;
+	SECURITY_DESCRIPTOR SecurityDescriptor;
+	memset(&SecurityAttributes, 0, sizeof(SecurityAttributes));
+	memset(&SecurityDescriptor, 0, sizeof(SecurityDescriptor));
 	PSID SID_Value = nullptr;
-
-	InitializeSecurityDescriptor(SecurityDescriptor.get(), SECURITY_DESCRIPTOR_REVISION);
-	InitializeAcl((PACL)ACL_Buffer.get(), PACKET_MAXSIZE, ACL_REVISION);
-	ConvertStringSidToSidW(SID_ADMINISTRATORS_GROUP, &SID_Value);
-	AddAccessAllowedAce((PACL)ACL_Buffer.get(), ACL_REVISION, GENERIC_ALL, SID_Value);
-	SetSecurityDescriptorDacl(SecurityDescriptor.get(), true, (PACL)ACL_Buffer.get(), false);
-	SecurityAttributes->lpSecurityDescriptor = SecurityDescriptor.get();
-	SecurityAttributes->bInheritHandle = true;
-
-//Create mailslot.
-	HANDLE hSlot = CreateMailslotW(MAILSLOT_NAME, PACKET_MAXSIZE - 1U, MAILSLOT_WAIT_FOREVER, SecurityAttributes.get());
-	if (hSlot == INVALID_HANDLE_VALUE)
+	if (!SystemSecurityInit(reinterpret_cast<const ACL *>(ACL_Buffer.get()), SecurityAttributes, SecurityDescriptor, SID_Value))
 	{
-		LocalFree(SID_Value);
+		if (SID_Value != nullptr)
+			LocalFree(SID_Value);
 
-		PrintError(LOG_ERROR_SYSTEM, L"Create mailslot error", GetLastError(), nullptr, 0);
 		return false;
 	}
 
+//Create mailslot.
+	const HANDLE MailslotHandle = CreateMailslotW(
+		MAILSLOT_NAME, 
+		FILE_BUFFER_SIZE - 1U, 
+		MAILSLOT_WAIT_FOREVER, 
+		&SecurityAttributes);
+	if (MailslotHandle == INVALID_HANDLE_VALUE)
+	{
+		PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Create mailslot error", GetLastError(), nullptr, 0);
+		if (SID_Value != nullptr)
+			LocalFree(SID_Value);
+
+		return false;
+	}
+
+//Free pointer.
 	ACL_Buffer.reset();
-	LocalFree(SID_Value);
+	if (SID_Value != nullptr)
+		LocalFree(SID_Value);
 
 //Initialization
-	BOOL Result = FALSE;
-	bool FlushDNS = false;
-	DWORD cbMessage = 0, cMessage = 0, cbRead = 0;
-	std::shared_ptr<wchar_t> lpszBuffer(new wchar_t[PACKET_MAXSIZE]());
-	wmemset(lpszBuffer.get(), 0, PACKET_MAXSIZE);
+	std::unique_ptr<wchar_t[]> Buffer(new wchar_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	wmemset(Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
+	std::wstring Message;
+	std::string Domain;
+	DWORD MessageLength = 0;
 
-//MailSlot Monitor
+//Mailslot monitor
 	for (;;)
 	{
-		cbMessage = 0;
-		cMessage = 0;
+	//Reset parameters.
+		wmemset(Buffer.get(), 0, FILE_BUFFER_SIZE);
+		MessageLength = 0;
 
-	//Get mailslot messages.
-		Result = GetMailslotInfo(hSlot, nullptr, &cbMessage, &cMessage, nullptr);
+	//Read message from mailslot.
+		const auto Result = ReadFile(
+			MailslotHandle, 
+			Buffer.get(), 
+			FILE_BUFFER_SIZE, 
+			&MessageLength, 
+			nullptr);
 		if (Result == FALSE)
 		{
-			PrintError(LOG_ERROR_SYSTEM, L"Mailslot Monitor initialization error", GetLastError(), nullptr, 0);
-			
-			CloseHandle(hSlot);
+			PrintError(LOG_LEVEL_TYPE::LEVEL_3, LOG_ERROR_TYPE::SYSTEM, L"Mailslot read messages error", GetLastError(), nullptr, 0);
+
+			CloseHandle(MailslotHandle);
 			return false;
 		}
+		else {
+			Message = Buffer.get();
+			Domain.clear();
 
-	//Wait for messages.
-		if (cbMessage == MAILSLOT_NO_MESSAGE)
-		{
-			Sleep(LOOP_INTERVAL_TIME_MONITOR);
-			continue;
-		}
-
-	//Got messages.
-		FlushDNS = false;
-		while (cMessage > 0)
-		{
-			Result = ReadFile(hSlot, lpszBuffer.get(), cbMessage, &cbRead, nullptr);
-			if (Result == FALSE)
+		//Read message.
+			if (Message == MAILSLOT_MESSAGE_FLUSH_DNS) //Flush all DNS cache.
 			{
-				PrintError(LOG_ERROR_SYSTEM, L"MailSlot read messages error", GetLastError(), nullptr, 0);
-				
-				CloseHandle(hSlot);
-				return false;
+				Flush_DNS_Cache(nullptr);
 			}
-
-			if (!FlushDNS && memcmp(lpszBuffer.get(), MAILSLOT_MESSAGE_FLUSH_DNS, wcslen(MAILSLOT_MESSAGE_FLUSH_DNS)) == 0)
+			else if (Message.compare(0, wcslen(MAILSLOT_MESSAGE_FLUSH_DNS_DOMAIN), MAILSLOT_MESSAGE_FLUSH_DNS_DOMAIN) == 0 && //Flush single domain cache.
+				Message.length() > wcslen(MAILSLOT_MESSAGE_FLUSH_DNS_DOMAIN) + DOMAIN_MINSIZE && //Domain length check
+				Message.length() < wcslen(MAILSLOT_MESSAGE_FLUSH_DNS_DOMAIN) + DOMAIN_MAXSIZE)
 			{
-				FlushDNS = true;
-				FlushAllDNSCache();
+				if (WCS_To_MBS_String(Message.c_str() + wcslen(MAILSLOT_MESSAGE_FLUSH_DNS_DOMAIN), DOMAIN_MAXSIZE, Domain) && 
+					Domain.length() > DOMAIN_MINSIZE && Domain.length() < DOMAIN_MAXSIZE)
+						Flush_DNS_Cache(reinterpret_cast<const uint8_t *>(Domain.c_str()));
+				else 
+					PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Convert multiple byte or wide char string error", 0, nullptr, 0);
 			}
-			memset(lpszBuffer.get(), 0, PACKET_MAXSIZE);
-
-		//Get other mailslot messages.
-			Result = GetMailslotInfo(hSlot, nullptr, &cbMessage, &cMessage, nullptr);
-			if (Result == FALSE)
-			{
-				PrintError(LOG_ERROR_SYSTEM, L"Mailslot Monitor initialization error", GetLastError(), nullptr, 0);
-				
-				CloseHandle(hSlot);
-				return false;
+			else {
+				Sleep(Parameter.FileRefreshTime);
 			}
 		}
-
-		Sleep(LOOP_INTERVAL_TIME_MONITOR);
 	}
 
 //Monitor terminated
-	CloseHandle(hSlot);
-	PrintError(LOG_ERROR_SYSTEM, L"MailSlot module Monitor terminated", 0, nullptr, 0);
+	CloseHandle(MailslotHandle);
+	PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Mailslot module Monitor terminated", 0, nullptr, 0);
 	return false;
 }
 
-//MailSlot of flush DNS cache sender
-bool WINAPI FlushDNSMailSlotSender(
-	void)
+//Mailslot of flush DNS cache sender
+bool WINAPI Flush_DNS_MailSlotSender(
+	const wchar_t * const Domain)
 {
-//Create mailslot.
-	HANDLE hFile = CreateFileW(MAILSLOT_NAME, GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (hFile == INVALID_HANDLE_VALUE)
+//Mailslot initialization
+	const HANDLE FileHandle = CreateFileW(
+		MAILSLOT_NAME, 
+		GENERIC_WRITE, 
+		FILE_SHARE_READ, 
+		nullptr, 
+		OPEN_EXISTING, 
+		FILE_ATTRIBUTE_NORMAL, 
+		nullptr);
+	if (FileHandle == INVALID_HANDLE_VALUE)
 	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf_s(stderr, L"Create mailslot error, error code is %lu.\n", GetLastError());
+		std::wstring InnerMessage(L"[System Error] Create mailslot error");
+		if (GetLastError() == 0)
+		{
+			InnerMessage.append(L".\n");
+			PrintToScreen(true, InnerMessage.c_str());
+		}
+		else {
+			ErrorCodeToMessage(LOG_ERROR_TYPE::SYSTEM, GetLastError(), InnerMessage);
+			InnerMessage.append(L".\n");
+			PrintToScreen(true, InnerMessage.c_str(), GetLastError());
+		}
 
 		return false;
+	}
+
+//Message initialization
+	std::wstring Message(MAILSLOT_MESSAGE_FLUSH_DNS);
+	if (Domain != nullptr && wcsnlen_s(Domain, DOMAIN_MAXSIZE) > DOMAIN_MINSIZE)
+	{
+		Message.append(L": ");
+		Message.append(Domain);
 	}
 
 //Write into mailslot.
-	DWORD cbWritten = 0;
-	if (!WriteFile(hFile, MAILSLOT_MESSAGE_FLUSH_DNS, (DWORD)(lstrlenW(MAILSLOT_MESSAGE_FLUSH_DNS) + 1U) * sizeof(wchar_t), &cbWritten, nullptr))
+	DWORD WrittenBytes = 0;
+	if (WriteFile(
+			FileHandle, 
+			Message.c_str(), 
+			static_cast<DWORD>(sizeof(wchar_t) * Message.length() + NULL_TERMINATE_LENGTH), 
+			&WrittenBytes, 
+			nullptr) == 0)
 	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf_s(stderr, L"MailSlot write messages error, error code is %lu.\n", GetLastError());
+		CloseHandle(FileHandle);
+		std::wstring InnerMessage(L"[System Error] Mailslot write messages error");
+		if (GetLastError() == 0)
+		{
+			InnerMessage.append(L".\n");
+			PrintToScreen(true, InnerMessage.c_str());
+		}
+		else {
+			ErrorCodeToMessage(LOG_ERROR_TYPE::SYSTEM, GetLastError(), InnerMessage);
+			InnerMessage.append(L".\n");
+			PrintToScreen(true, InnerMessage.c_str(), GetLastError());
+		}
 
-		CloseHandle(hFile);
+		return false;
+	}
+	else {
+		CloseHandle(FileHandle);
+		PrintToScreen(true, L"[Notice] Flush DNS cache message was sent successfully.\n");
+	}
+
+	return true;
+}
+#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+//Process already exists check
+bool CheckProcessExists(
+	void)
+{
+//Open current dectory to make a file mutex handle.
+	GlobalRunningStatus.Initialized_MutexHandle = open(GlobalRunningStatus.MBS_Path_Global->front().c_str(), O_RDONLY | O_NONBLOCK);
+	if (GlobalRunningStatus.Initialized_MutexHandle == RETURN_ERROR)
+	{
+		PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Process already exists error", errno, nullptr, 0);
 		return false;
 	}
 
-	CloseHandle(hFile);
-	std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-	fwprintf_s(stderr, L"Flush DNS cache message was sent successfully.\n");
+//Set file mutex handle.
+	if (flock(GlobalRunningStatus.Initialized_MutexHandle, LOCK_EX | LOCK_NB) == RETURN_ERROR)
+	{
+		close(GlobalRunningStatus.Initialized_MutexHandle);
+		GlobalRunningStatus.Initialized_MutexHandle = RETURN_ERROR;
+		PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Process already exists error", errno, nullptr, 0);
+
+		return false;
+	}
+
 	return true;
 }
 
-#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACX))
+//Handle the system signal.
+void SIG_Handler(
+	const int Signal)
+{
+//Mutex handle cleanup
+	if (GlobalRunningStatus.Initialized_MutexHandle != 0 && GlobalRunningStatus.Initialized_MutexHandle != RETURN_ERROR)
+	{
+		flock(GlobalRunningStatus.Initialized_MutexHandle, LOCK_UN);
+		close(GlobalRunningStatus.Initialized_MutexHandle);
+		GlobalRunningStatus.Initialized_MutexHandle = 0;
+	}
+
+//Free all OpenSSL libraries
+#if defined(ENABLE_TLS)
+#if OPENSSL_VERSION_NUMBER < OPENSSL_VERSION_1_1_0 //OpenSSL version brfore 1.1.0
+	if (GlobalRunningStatus.IsInitialized_OpenSSL)
+	{
+		OpenSSL_Library_Init(false);
+		GlobalRunningStatus.IsInitialized_OpenSSL = false;
+	}
+#endif
+#endif
+
+//Print to screen.
+	PrintToScreen(true, L"[Notice] Get closing signal.\n");
+
+//Close all file handles.
+#if (defined(PLATFORM_LINUX) && !defined(PLATFORM_OPENWRT))
+	fcloseall();
+#endif
+
+//Exit process.
+	exit(EXIT_SUCCESS);
+	return;
+}
+
 //Flush DNS cache FIFO Monitor
-bool FlushDNSFIFOMonitor(
+bool Flush_DNS_FIFO_Monitor(
 	void)
 {
 //Initialization
-	unlink(FIFO_PATH_NAME);
-	std::shared_ptr<char> Buffer(new char[PACKET_MAXSIZE]());
-	memset(Buffer.get(), 0, PACKET_MAXSIZE);
-	int FIFO_FD = 0;
-
-//Create FIFO.
-	if (mkfifo(FIFO_PATH_NAME, O_CREAT) < 0 || chmod(FIFO_PATH_NAME, S_IRUSR|S_IWUSR|S_IWGRP|S_IWOTH) < 0)
-	{
-		PrintError(LOG_ERROR_SYSTEM, L"Create FIFO error", errno, nullptr, 0);
-
-		unlink(FIFO_PATH_NAME);
-		return false;
-	}
-
-//Open FIFO.
-	FIFO_FD = open(FIFO_PATH_NAME, O_RDONLY, 0);
-	if (FIFO_FD < 0)
-	{
-		PrintError(LOG_ERROR_SYSTEM, L"Create FIFO error", errno, nullptr, 0);
-
-		unlink(FIFO_PATH_NAME);
-		return false;
-	}
+	std::unique_ptr<uint8_t[]> Buffer(new uint8_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	memset(Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
+	std::string Message;
+	int FIFO_Handle = 0;
+	ssize_t Length = 0;
 
 //FIFO Monitor
 	for (;;)
 	{
-		memset(Buffer.get(), 0, PACKET_MAXSIZE);
-		if (read(FIFO_FD, Buffer.get(), PACKET_MAXSIZE) > 0 && memcmp(Buffer.get(), FIFO_MESSAGE_FLUSH_DNS, strlen(FIFO_MESSAGE_FLUSH_DNS)) == 0)
-			FlushAllDNSCache();
+	//Create FIFO and create its notify monitor.
+		unlink(FIFO_PATH_NAME);
+		errno = 0;
+		if (mkfifo(FIFO_PATH_NAME, O_CREAT) == RETURN_ERROR || 
+			chmod(FIFO_PATH_NAME, S_IRUSR | S_IWUSR | S_IWGRP | S_IWOTH) == RETURN_ERROR)
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Create FIFO error", errno, nullptr, 0);
 
-		Sleep(LOOP_INTERVAL_TIME_MONITOR);
+			unlink(FIFO_PATH_NAME);
+			return false;
+		}
+
+	//Open FIFO.
+		errno = 0;
+		FIFO_Handle = open(FIFO_PATH_NAME, O_RDONLY, 0);
+		if (FIFO_Handle == RETURN_ERROR)
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"Create FIFO error", errno, nullptr, 0);
+
+			unlink(FIFO_PATH_NAME);
+			return false;
+		}
+
+	//Read file data.
+		memset(Buffer.get(), 0, FILE_BUFFER_SIZE);
+		errno = 0;
+		Length = read(FIFO_Handle, Buffer.get(), FILE_BUFFER_SIZE);
+		if (Length == RETURN_ERROR || Length < static_cast<ssize_t>(DOMAIN_MINSIZE) || Length > static_cast<ssize_t>(DOMAIN_MAXSIZE))
+		{
+			PrintError(LOG_LEVEL_TYPE::LEVEL_3, LOG_ERROR_TYPE::SYSTEM, L"FIFO read messages error", errno, nullptr, 0);
+		}
+		else {
+			Message = reinterpret_cast<const char *>(Buffer.get());
+
+		//Read message.
+			if (Message == FIFO_MESSAGE_FLUSH_DNS) //Flush all DNS cache.
+				Flush_DNS_Cache(nullptr);
+			else if (Message.compare(0, strlen(FIFO_MESSAGE_FLUSH_DNS_DOMAIN), FIFO_MESSAGE_FLUSH_DNS_DOMAIN) == 0 && //Flush single domain cache.
+				Message.length() > strlen(FIFO_MESSAGE_FLUSH_DNS_DOMAIN) + DOMAIN_MINSIZE && //Domain length check
+				Message.length() < strlen(FIFO_MESSAGE_FLUSH_DNS_DOMAIN) + DOMAIN_MAXSIZE)
+					Flush_DNS_Cache(reinterpret_cast<const uint8_t *>(Message.c_str()) + strlen(FIFO_MESSAGE_FLUSH_DNS_DOMAIN));
+			else 
+				Sleep(Parameter.FileRefreshTime);
+		}
+
+	//Close FIFO.
+		close(FIFO_Handle);
+		FIFO_Handle = 0;
 	}
 
 //Monitor terminated
-	close(FIFO_FD);
+	close(FIFO_Handle);
 	unlink(FIFO_PATH_NAME);
-	PrintError(LOG_ERROR_SYSTEM, L"FIFO module Monitor terminated", 0, nullptr, 0);
+	PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::SYSTEM, L"FIFO module Monitor terminated", 0, nullptr, 0);
 	return true;
 }
 
 //Flush DNS cache FIFO sender
-bool FlushDNSFIFOSender(
-	void)
+bool Flush_DNS_FIFO_Sender(
+	const uint8_t * const Domain)
 {
-	int FIFO_FD = open(FIFO_PATH_NAME, O_WRONLY|O_TRUNC|O_NONBLOCK, 0);
-	if (FIFO_FD > 0 && write(FIFO_FD, FIFO_MESSAGE_FLUSH_DNS, strlen(FIFO_MESSAGE_FLUSH_DNS) + 1U) > 0)
+//Message initialization
+	std::string Message(FIFO_MESSAGE_FLUSH_DNS);
+	if (Domain != nullptr && strnlen(reinterpret_cast<const char *>(Domain), DOMAIN_MAXSIZE) > DOMAIN_MINSIZE)
 	{
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf(stderr, L"Flush DNS cache message was sent successfully.\n");
-		close(FIFO_FD);
+		Message.append(": ");
+		Message.append(reinterpret_cast<const char *>(Domain));
+	}
+
+//Write into FIFO file.
+	errno = 0;
+	const int FIFO_Handle = open(FIFO_PATH_NAME, O_WRONLY | O_TRUNC | O_NONBLOCK, 0);
+	if (FIFO_Handle > 0)
+	{
+		if (write(FIFO_Handle, Message.c_str(), Message.length() + NULL_TERMINATE_LENGTH) > 0)
+		{
+			close(FIFO_Handle);
+			PrintToScreen(true, L"[Notice] Flush DNS cache message was sent successfully.\n");
+
+			return true;
+		}
+		else {
+			close(FIFO_Handle);
+		}
+	}
+
+//Print error log.
+	std::wstring InnerMessage(L"[System Error] FIFO write messages error");
+	if (errno == 0)
+	{
+		InnerMessage.append(L".\n");
+		PrintToScreen(true, InnerMessage.c_str());
 	}
 	else {
-		std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
-		fwprintf(stderr, L"FIFO write messages error, error code is %d.\n", errno);
-
-		return false;
+		ErrorCodeToMessage(LOG_ERROR_TYPE::SYSTEM, errno, InnerMessage);
+		InnerMessage.append(L".\n");
+		PrintToScreen(true, InnerMessage.c_str(), errno);
 	}
 
-	return true;
+	return false;
 }
 #endif
 
 //Flush DNS cache
-void __fastcall FlushAllDNSCache(
-	void)
+void Flush_DNS_Cache(
+	const uint8_t * const Domain)
 {
-//Flush DNS cache in program.
+//Flush DNS cache in process.
 	std::unique_lock<std::mutex> DNSCacheListMutex(DNSCacheListLock);
-	DNSCacheList.clear();
-	DNSCacheList.shrink_to_fit();
+	if (Domain == nullptr || //Flush all DNS cache.
+		strnlen_s(reinterpret_cast<const char *>(Domain), DOMAIN_MAXSIZE + PADDING_RESERVED_BYTES) > DOMAIN_MAXSIZE)
+	{
+		DNSCacheList.clear();
+	}
+	else { //Flush single domain cache.
+		for (auto DNSCacheDataIter = DNSCacheList.begin();DNSCacheDataIter != DNSCacheList.end();)
+		{
+			if (DNSCacheDataIter->Domain == reinterpret_cast<const char *>(Domain))
+				DNSCacheDataIter = DNSCacheList.erase(DNSCacheDataIter);
+			else 
+				++DNSCacheDataIter;
+		}
+	}
+
 	DNSCacheListMutex.unlock();
 
-//Flush DNS cache in system.
-	std::unique_lock<std::mutex> ScreenMutex(ScreenLock);
+#if (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+//Flush system DNS interval time check
+	if (LastFlushDNSTime > 0 && LastFlushDNSTime < GetCurrentSystemTime() + FLUSH_DNS_CACHE_INTERVAL_TIME * SECOND_TO_MILLISECOND)
+		return;
+	else 
+		LastFlushDNSTime = GetCurrentSystemTime();
+#endif
 
+//Flush DNS cache in system.
+	std::lock_guard<std::mutex> ScreenMutex(ScreenLock);
 #if defined(PLATFORM_WIN)
 	system("ipconfig /flushdns 2>nul"); //All Windows version
 	fwprintf_s(stderr, L"\n");
 #elif defined(PLATFORM_LINUX)
-	#if defined(PLATFORM_OPENWRT)
-		system("/etc/init.d/dnsmasq restart 2>/dev/null"); //Dnsmasq manage DNS cache on OpenWrt
-	#else
-		auto Result = system("service nscd restart 2>/dev/null"); //Name Service Cache Daemon service
-		Result = system("service dnsmasq restart 2>/dev/null"); //Dnsmasq service
-		Result = system("rndc restart 2>/dev/null"); //Name server control utility of BIND(9.1.3 and older version)
-		Result = system("rndc flush 2>/dev/null"); //Name server control utility of BIND(9.2.0 and newer version)
-	#endif
-#elif defined(PLATFORM_MACX)
+#if defined(PLATFORM_OPENWRT)
+	system("/etc/init.d/dnsmasq restart 2>/dev/null"); //Dnsmasq manage DNS cache on OpenWrt
+#else
+	auto Result = system("service nscd restart 2>/dev/null"); //Name Service Cache Daemon service
+	Result = system("service dnsmasq restart 2>/dev/null"); //Dnsmasq service
+	Result = system("rndc restart 2>/dev/null"); //Name server control utility of BIND(9.1.3 and older version)
+	Result = system("rndc flush 2>/dev/null"); //Name server control utility of BIND(9.2.0 and newer version)
+#endif
+#elif defined(PLATFORM_MACOS)
 //	system("lookupd -flushcache 2>/dev/null"); //Less than Mac OS X Tiger(10.4)
 //	system("dscacheutil -flushcache 2>/dev/null"); //Mac OS X Leopard(10.5) and Snow Leopard(10.6)
 	system("killall -HUP mDNSResponder 2>/dev/null"); //Mac OS X Lion(10.7), Mountain Lion(10.8) and Mavericks(10.9)
-	system("discoveryutil mdnsflushcache 2>/dev/null"); //Mac OS X Yosemite(10.10) and newer version
+	system("discoveryutil mdnsflushcache 2>/dev/null"); //Mac OS X Yosemite(10.10) and newer Mac OS X/macOS version
 #endif
 
 	return;

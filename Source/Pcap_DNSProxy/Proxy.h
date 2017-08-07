@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
-// A local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2015 Chengr28
+// Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
+// Copyright (C) 2012-2017 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -17,6 +17,9 @@
 // Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
+#ifndef PCAP_DNSPROXY_PROXY_H
+#define PCAP_DNSPROXY_PROXY_H
+
 #include "Base.h"
 
 //Global variables
@@ -24,47 +27,68 @@ extern CONFIGURATION_TABLE Parameter;
 extern GLOBAL_STATUS GlobalRunningStatus;
 
 //Functions
-SSIZE_T __fastcall ProxySocketSelecting(
-	_In_ SYSTEM_SOCKET Socket, 
-	_In_ fd_set *ReadFDS, 
-	_In_ fd_set *WriteFDS, 
-	_In_ timeval *Timeout, 
-	_In_opt_ const char *SendBuffer, 
-	_In_ const size_t SendSize, 
-	_Out_ char *OriginalRecv, 
-	_In_ const size_t RecvSize, 
-	_In_ const size_t MinLen, 
-	_Out_opt_ SSIZE_T *ErrorCode);
-bool __fastcall SOCKSSelectionExchange(
-	_In_ SOCKET_DATA *SOCKSSocketData, 
-	_In_ fd_set *ReadFDS, 
-	_In_ fd_set *WriteFDS, 
-	_In_ timeval *Timeout, 
-	_Inout_ char *SendBuffer, 
-	_Out_ char *OriginalRecv, 
-	_In_ const size_t RecvSize);
-bool __fastcall SOCKSAuthenticationUsernamePassword(
-	_In_ SYSTEM_SOCKET Socket, 
-	_In_ fd_set *ReadFDS, 
-	_In_ fd_set *WriteFDS, 
-	_In_ timeval *Timeout, 
-	_Inout_ char *SendBuffer, 
-	_Out_ char *OriginalRecv, 
-	_In_ const size_t RecvSize);
-bool __fastcall SOCKSClientCommandRequest(
-	_In_ const uint16_t Protocol, 
-	_In_ SYSTEM_SOCKET Socket, 
-	_In_ fd_set *ReadFDS, 
-	_In_ fd_set *WriteFDS, 
-	_In_ timeval *Timeout, 
-	_Inout_ char *SendBuffer, 
-	_Out_ char *OriginalRecv, 
-	_In_ const size_t RecvSize, 
-	_In_opt_ SOCKET_DATA *UDP_ASSOCIATE_TCP_Connecting_Address);
-bool __fastcall HTTP_CONNECTRequest(
-	_In_ SOCKET_DATA *HTTPSocketData, 
-	_In_ fd_set *ReadFDS, 
-	_In_ fd_set *WriteFDS, 
-	_In_ timeval *Timeout, 
-	_Out_ char *OriginalRecv, 
-	_In_ const size_t RecvSize);
+bool SOCKS_SelectionExchange(
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	std::vector<ssize_t> &ErrorCodeList);
+bool SOCKS_AuthenticationExchange(
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	std::vector<ssize_t> &ErrorCodeList);
+bool SOCKS_ClientCommandRequest(
+	const uint16_t Protocol, 
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	std::vector<ssize_t> &ErrorCodeList, 
+	SOCKET_DATA * const UDP_ASSOCIATE_Address);
+void HTTP_CONNECT_2_IntegerEncoding(
+	std::vector<uint8_t> &BytesList, 
+	size_t IntegerValue);
+void HTTP_CONNECT_2_SETTINGS_WriteBytes(
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	const uint16_t Identifier, 
+	const uint32_t Value);
+size_t HTTP_CONNECT_2_HeaderTableDecoding(
+	std::vector<std::string> &HeaderList, 
+	const uint8_t *Buffer, 
+	const size_t Length, 
+	const uint8_t PrefixSize);
+size_t HTTP_CONNECT_2_IntegerDecoding(
+	const uint8_t *Buffer, 
+	const size_t Length, 
+	const uint8_t PrefixSize, 
+	size_t &IntegerValue);
+bool HTTP_CONNECT_2_HEADERS_WriteBytes(
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	const uint8_t *Buffer, 
+	const size_t Length, 
+	const bool IsLiteralFlag);
+bool HTTP_CONNECT_2_HEADERS_ReadBytes(
+	std::vector<std::string> &HeaderList, 
+	const uint8_t *Buffer, 
+	const size_t Length);
+bool HTTP_CONNECT_ResponseBytesCheck(
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	const bool IsPrintError);
+bool HTTP_CONNECT_2_ShutdownConnection(
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<ssize_t> &ErrorCodeList, 
+	const size_t Type, 
+	const size_t ErrorCode, 
+	void *TLS_Context);
+bool HTTP_CONNECT_Handshake(
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	std::vector<ssize_t> &ErrorCodeList, 
+	void *TLS_Context);
+bool HTTP_CONNECT_Exchange(
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	std::vector<ssize_t> &ErrorCodeList, 
+	void *TLS_Context);
+size_t HTTP_CONNECT_Transport(
+	std::vector<SOCKET_DATA> &SocketDataList, 
+	std::vector<SOCKET_SELECTING_SERIAL_DATA> &SocketSelectingDataList, 
+	std::vector<ssize_t> &ErrorCodeList, 
+	void *TLS_Context);
+#endif

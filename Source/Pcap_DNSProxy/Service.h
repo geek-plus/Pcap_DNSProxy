@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
-// A local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2015 Chengr28
+// Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
+// Copyright (C) 2012-2017 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -17,36 +17,48 @@
 // Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
+#ifndef PCAP_DNSPROXY_SERVICE_H
+#define PCAP_DNSPROXY_SERVICE_H
+
 #include "Base.h"
 
 //Global variables
-#if defined(PLATFORM_WIN)
-	extern CONFIGURATION_TABLE Parameter;
-	extern GLOBAL_STATUS GlobalRunningStatus;
-#endif
+extern CONFIGURATION_TABLE Parameter;
+extern GLOBAL_STATUS GlobalRunningStatus;
 extern std::deque<DNS_CACHE_DATA> DNSCacheList;
 extern std::mutex ScreenLock, DNSCacheListLock;
 
-#if defined(PLATFORM_WIN)
 //Local variables
+#if defined(PLATFORM_WIN)
 static DWORD ServiceCurrentStatus = 0;
 static BOOL IsServiceRunning = FALSE;
 SERVICE_STATUS_HANDLE ServiceStatusHandle = nullptr;
 HANDLE ServiceEvent = nullptr;
+#endif
+#if (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+uint64_t LastFlushDNSTime = 0;
+#endif
 
 //Functions
+#if defined(PLATFORM_WIN)
+bool SystemSecurityInit(
+	const ACL * const ACL_Buffer, 
+	SECURITY_ATTRIBUTES &SecurityAttributes, 
+	SECURITY_DESCRIPTOR &SecurityDescriptor, 
+	PSID &SID_Value);
 size_t WINAPI ServiceControl(
-	_In_ const DWORD dwControlCode);
-BOOL WINAPI ExecuteService(
+	const DWORD ControlCode);
+HANDLE WINAPI ExecuteService(
 	void);
 void WINAPI TerminateService(
 	void);
 DWORD WINAPI ServiceProc(
-	_In_ PVOID lpParameter);
+	PVOID ProcParameter);
 BOOL WINAPI UpdateServiceStatus(
-	_In_ const DWORD dwCurrentState, 
-	_In_ const DWORD dwWin32ExitCode, 
-	_In_ const DWORD dwServiceSpecificExitCode, 
-	_In_ const DWORD dwCheckPoint, 
-	_In_ const DWORD dwWaitHint);
+	const DWORD CurrentState, 
+	const DWORD WinExitCode, 
+	const DWORD ServiceSpecificExitCode, 
+	const DWORD CheckPoint, 
+	const DWORD WaitHint);
+#endif
 #endif
