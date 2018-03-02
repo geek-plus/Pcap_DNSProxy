@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -25,7 +25,8 @@
 //Global variables
 extern CONFIGURATION_TABLE Parameter;
 extern GLOBAL_STATUS GlobalRunningStatus;
-extern std::deque<DNS_CACHE_DATA> DNSCacheList;
+extern std::list<DNS_CACHE_DATA> DNSCacheList;
+extern std::unordered_multimap<std::string, std::list<DNS_CACHE_DATA>::iterator> DNSCacheIndexList;
 extern std::mutex ScreenLock, DNSCacheListLock;
 
 //Local variables

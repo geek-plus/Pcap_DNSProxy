@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -25,7 +25,7 @@
 // 
 /* This code is from Qt source, which in /src/corelib/global/qsystemdetection.h header file, please visit https://www.qt.io/developers.
 
-   The operating system, must be one of: (PLATFOEM_x)
+   The operating system, must be one of: (PLATFORM_x)
 
      DARWIN   - Any Darwin system (macOS, iOS, watchOS, tvOS)
      MACOS    - macOS
@@ -217,7 +217,7 @@
 #ifdef PLATFORM_DARWIN
 #  include <Availability.h>
 #  include <AvailabilityMacros.h>
-#
+# 
 #  ifdef PLATFORM_MACOS
 #    if !defined(__MAC_OS_X_VERSION_MIN_REQUIRED) || __MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_6
 #       undef __MAC_OS_X_VERSION_MIN_REQUIRED
@@ -228,10 +228,10 @@
 #       define MAC_OS_X_VERSION_MIN_REQUIRED MAC_OS_X_VERSION_10_6
 #    endif
 #  endif
-#
+# 
 #  // Numerical checks are preferred to named checks, but to be safe
 #  // we define the missing version names in case Qt uses them.
-#
+# 
 #  if !defined(__MAC_10_7)
 #       define __MAC_10_7 1070
 #  endif
@@ -268,7 +268,7 @@
 #  if !defined(MAC_OS_X_VERSION_10_12)
 #       define MAC_OS_X_VERSION_10_12 101200
 #  endif
-#
+# 
 #  if !defined(__IPHONE_4_3)
 #       define __IPHONE_4_3 40300
 #  endif
@@ -349,20 +349,20 @@
 #endif
 
 //C Standard Library and C++ Standard Template Library/STL headers
-#include <algorithm>               //Algorithm support
-#include <atomic>                  //Atomic support
+#include <algorithm>               //Collection of functions especially designed to be used on ranges of elements algorithm support
+#include <atomic>                  //Atomic type support
 #include <condition_variable>      //Condition variable support
 #include <deque>                   //Double-ended queue support
-#include <functional>              //Objects specifically designed to be used with a syntax similar to that of functions support
-#include <list>                    //List support
-#include <map>                     //Map support
-#include <memory>                  //Manage dynamic memory support
-#include <mutex>                   //Mutex lock support
-#include <queue>                   //Queue support
-#include <random>                  //Random-number generator support
-#include <regex>                   //Regular expression support
-#include <set>                     //Set support
+#include <functional>              //Function objects are objects specifically designed to be used with a syntax similar to that of functions support
+#include <list>                    //List container support
+#include <memory>                  //General utilities to manage dynamic memory support
+#include <mutex>                   //Facilities that allow mutual exclusion (mutex) of concurrent execution of critical sections of code, allowing to explicitly avoid data races support
+#include <queue>                   //Queue and priority_queue container adaptor support
+#include <random>                  //Random number generation facilities support
+#include <regex>                   //Regular expressions are a standardized way to express patterns to be matched against sequences of characters support
 #include <thread>                  //Thread support
+#include <unordered_map>           //Unordered_map and unordered_multimap container support
+#include <unordered_set>           //Unordered_set and unordered_multiset container support
 
 #if defined(PLATFORM_WIN)
 //LibSodium header, always enabled(Windows)
@@ -426,7 +426,7 @@
 	#include <sspi.h>                  //Security Support Provider Interface
 #endif
 
-//Library linking
+//Libraries linking
 	#pragma comment(lib, "iphlpapi.lib")   //Windows IP Helper, IP Stack for MIB-II and related functionality support
 	#pragma comment(lib, "ws2_32.lib")     //Windows WinSock 2.0+ support
 #if defined(ENABLE_HTTP)
@@ -445,7 +445,11 @@
 #endif
 #elif defined(PLATFORM_WIN32)
 #if defined(ENABLE_LIBSODIUM)
+#if defined(PLATFORM_WIN_XP)
+	#pragma comment(lib, "..\\Dependency\\LibSodium\\LibSodium_XP.lib")
+#else
 	#pragma comment(lib, "..\\Dependency\\LibSodium\\LibSodium_x86.lib")
+#endif
 #endif
 #if defined(ENABLE_PCAP)
 	#pragma comment(lib, "..\\Dependency\\WinPcap\\WPCAP_x86.lib")
@@ -595,7 +599,6 @@
 #endif
 	#define SOCKET_ERROR             (-1)
 	#define TRUE                     1U
-	#define RETURN_ERROR             (-1)
 	#define SD_BOTH                  SHUT_RDWR
 	#define SD_RECV                  SHUT_RD
 	#define SD_SEND                  SHUT_WR
@@ -606,17 +609,17 @@
 	#define WSAETIMEDOUT             ETIMEDOUT
 
 //Function definitions(Part 1)
-	#define closesocket                                                  close
-	#define fwprintf_s                                                   fwprintf
-	#define strnlen_s                                                    strnlen
-	#define vfwprintf_s                                                  vfwprintf
-	#define wcsnlen_s                                                    wcsnlen
-	#define WSAGetLastError()                                            errno
-	#define _set_errno(Value)                                            errno = (Value)
-	#define fread_s(Dst, DstSize, ElementSize, Count, File)              fread((Dst), (ElementSize), (Count), (File))
-	#define memcpy_s(Dst, DstSize, Src, Size)                            memcpy((Dst), (Src), (Size))
-	#define memmove_s(Dst, DstSize, Src, Size)                           memmove((Dst), (Src), (Size))
-	#define strncpy_s(Dst, DstSize, Src, Size)                           strncpy((Dst), (Src), (Size))
-	#define wcsncpy_s(Dst, DstSize, Src, Size)                           wcsncpy((Dst), (Src), (Size))
+	#define closesocket                                                       close
+	#define fwprintf_s                                                        fwprintf
+	#define strnlen_s                                                         strnlen
+	#define vfwprintf_s                                                       vfwprintf
+	#define wcsnlen_s                                                         wcsnlen
+	#define WSAGetLastError()                                                 errno
+	#define _set_errno(Value)                                                 errno = (Value)
+	#define fread_s(Destination, DestinationSize, ElementSize, Count, File)   fread((Destination), (ElementSize), (Count), (File))
+	#define memcpy_s(Destination, DestinationSize, Source, Size)              memcpy((Destination), (Source), (Size))
+	#define memmove_s(Destination, DestinationSize, Source, Size)             memmove((Destination), (Source), (Size))
+	#define strncpy_s(Destination, DestinationSize, Source, Size)             strncpy((Destination), (Source), (Size))
+	#define wcsncpy_s(Destination, DestinationSize, Source, Size)             wcsncpy((Destination), (Source), (Size))
 #endif
 #endif

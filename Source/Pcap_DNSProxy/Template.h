@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -46,7 +46,7 @@ public:
 //Redefine operator functions
 	BlockingQueue() = default;
 	BlockingQueue(const BlockingQueue &) = delete;
-	BlockingQueue &operator=(const BlockingQueue &) = delete;
+	BlockingQueue & operator=(const BlockingQueue &) = delete;
 
 //Pop function
 	void pop(
@@ -122,6 +122,11 @@ template<typename Ty> class DNSCurveHeapBufferTable
 public:
 	Ty                                   *Buffer;
 	size_t                               BufferSize;
+
+//Redefine operator functions
+//	DNSCurveHeapBufferTable() = default;
+	DNSCurveHeapBufferTable(const DNSCurveHeapBufferTable &) = delete;
+	DNSCurveHeapBufferTable & operator=(const DNSCurveHeapBufferTable &) = delete;
 
 //Member functions
 	DNSCurveHeapBufferTable(

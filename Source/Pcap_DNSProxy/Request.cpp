@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -25,16 +25,16 @@ bool DomainTestRequest(
 	const uint16_t Protocol)
 {
 //Initialization
-	std::unique_ptr<uint8_t[]> SendBuffer(new uint8_t[NORMAL_PACKET_MAXSIZE + PADDING_RESERVED_BYTES]());
-	std::unique_ptr<uint8_t[]> RecvBuffer(new uint8_t[Parameter.LargeBufferSize + PADDING_RESERVED_BYTES]());
+	const auto SendBuffer = std::make_unique<uint8_t[]>(NORMAL_PACKET_MAXSIZE + PADDING_RESERVED_BYTES);
+	const auto RecvBuffer = std::make_unique<uint8_t[]>(Parameter.LargeBufferSize + PADDING_RESERVED_BYTES);
 	memset(SendBuffer.get(), 0, NORMAL_PACKET_MAXSIZE + PADDING_RESERVED_BYTES);
 	memset(RecvBuffer.get(), 0, Parameter.LargeBufferSize + PADDING_RESERVED_BYTES);
 
 //Make a DNS request with Doamin Test packet.
 	const auto DNS_Header = reinterpret_cast<dns_hdr *>(SendBuffer.get());
 	DNS_Header->ID = Parameter.DomainTest_ID;
-	DNS_Header->Flags = htons(DNS_STANDARD);
-	DNS_Header->Question = htons(U16_NUM_ONE);
+	DNS_Header->Flags = htons(DNS_FLAG_STANDARD);
+	DNS_Header->Question = htons(UINT16_NUM_ONE);
 	size_t DataLength = 0;
 
 //Convert domain.
@@ -60,7 +60,7 @@ bool DomainTestRequest(
 		//EDNS Label
 			if (Parameter.EDNS_Label)
 			{
-				DataLength = Add_EDNS_To_Additional_RR(SendBuffer.get(), DataLength + sizeof(dns_hdr), NORMAL_PACKET_MAXSIZE, nullptr);
+				DataLength = Add_EDNS_LabelToPacket(SendBuffer.get(), DataLength + sizeof(dns_hdr), NORMAL_PACKET_MAXSIZE, nullptr);
 				DataLength -= sizeof(dns_hdr);
 			}
 		}
@@ -113,9 +113,16 @@ bool DomainTestRequest(
 		//Test again check.
 			if (Protocol == AF_INET6)
 			{
-				if ((Parameter.Target_Server_Main_IPv6.HopLimitsData_Assign.HopLimit == 0 && Parameter.Target_Server_Main_IPv6.HopLimitsData_Mark.HopLimit == 0) || //Main
-					(Parameter.Target_Server_Alternate_IPv6.AddressData.Storage.ss_family != 0 && //Alternate
-					Parameter.Target_Server_Alternate_IPv6.HopLimitsData_Assign.HopLimit == 0 && Parameter.Target_Server_Alternate_IPv6.HopLimitsData_Mark.HopLimit == 0))
+				if (
+				//Main
+					(Parameter.Target_Server_Main_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Assign == 0 && 
+					Parameter.Target_Server_Main_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Mark == 0) || 
+					!Parameter.Target_Server_Main_IPv6.ServerPacketStatus.IsMarkSign || 
+				//Alternate
+					(Parameter.Target_Server_Alternate_IPv6.AddressData.Storage.ss_family != 0 && 
+					((Parameter.Target_Server_Alternate_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Assign == 0 && 
+					Parameter.Target_Server_Alternate_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Mark == 0) || 
+					!Parameter.Target_Server_Alternate_IPv6.ServerPacketStatus.IsMarkSign)))
 						goto JumpToRetest;
 
 			//Multiple list(IPv6)
@@ -123,16 +130,25 @@ bool DomainTestRequest(
 				{
 					for (const auto &DNSServerDataIter:*Parameter.Target_Server_IPv6_Multiple)
 					{
-						if (DNSServerDataIter.HopLimitsData_Assign.HopLimit == 0 && DNSServerDataIter.HopLimitsData_Mark.HopLimit == 0)
-							goto JumpToRetest;
+						if ((DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Assign == 0 && 
+							DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Mark == 0) || 
+							!DNSServerDataIter.ServerPacketStatus.IsMarkSign)
+								goto JumpToRetest;
 					}
 				}
 			}
 			else if (Protocol == AF_INET)
 			{
-				if ((Parameter.Target_Server_Main_IPv4.HopLimitsData_Assign.TTL == 0 && Parameter.Target_Server_Main_IPv4.HopLimitsData_Mark.TTL == 0) || //Main
-					(Parameter.Target_Server_Alternate_IPv4.AddressData.Storage.ss_family != 0 && //Alternate
-					Parameter.Target_Server_Alternate_IPv4.HopLimitsData_Assign.TTL == 0 && Parameter.Target_Server_Alternate_IPv4.HopLimitsData_Mark.TTL == 0))
+				if (
+				//Main
+					(Parameter.Target_Server_Main_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Assign == 0 && 
+					Parameter.Target_Server_Main_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Mark == 0) || 
+					!Parameter.Target_Server_Main_IPv4.ServerPacketStatus.IsMarkSign || 
+				//Alternate
+					(Parameter.Target_Server_Alternate_IPv4.AddressData.Storage.ss_family != 0 && 
+					((Parameter.Target_Server_Alternate_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Assign == 0 && 
+					Parameter.Target_Server_Alternate_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Mark == 0) || 
+					!Parameter.Target_Server_Alternate_IPv4.ServerPacketStatus.IsMarkSign)))
 						goto JumpToRetest;
 
 			//Multiple list(IPv4)
@@ -140,8 +156,10 @@ bool DomainTestRequest(
 				{
 					for (const auto &DNSServerDataIter:*Parameter.Target_Server_IPv4_Multiple)
 					{
-						if (DNSServerDataIter.HopLimitsData_Assign.TTL == 0 && DNSServerDataIter.HopLimitsData_Mark.TTL == 0)
-							goto JumpToRetest;
+						if ((DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Assign == 0 && 
+							DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Mark == 0) || 
+							!DNSServerDataIter.ServerPacketStatus.IsMarkSign)
+								goto JumpToRetest;
 					}
 				}
 			}
@@ -158,12 +176,12 @@ bool DomainTestRequest(
 			Sleep(SENDING_INTERVAL_TIME);
 		}
 		else {
-		//Make ramdom domain request.
+		//Make random domain request.
 			if (Parameter.DomainTest_Data == nullptr)
 			{
 				memset(SendBuffer.get() + sizeof(dns_hdr), 0, NORMAL_PACKET_MAXSIZE - sizeof(dns_hdr));
 				memset(RecvBuffer.get(), 0, Parameter.LargeBufferSize + PADDING_RESERVED_BYTES);
-				MakeRamdomDomain(RecvBuffer.get());
+				MakeRandomDomain(RecvBuffer.get());
 				DataLength = StringToPacketQuery(RecvBuffer.get(), SendBuffer.get() + sizeof(dns_hdr)) + sizeof(dns_hdr);
 
 			//Make DNS query data.
@@ -181,7 +199,7 @@ bool DomainTestRequest(
 				if (Parameter.EDNS_Label)
 				{
 					DNS_Header->Additional = 0;
-					DataLength = Add_EDNS_To_Additional_RR(SendBuffer.get(), DataLength, NORMAL_PACKET_MAXSIZE, nullptr);
+					DataLength = Add_EDNS_LabelToPacket(SendBuffer.get(), DataLength, NORMAL_PACKET_MAXSIZE, nullptr);
 				}
 			}
 
@@ -224,13 +242,15 @@ bool ICMP_TestRequest(
 		Length = sizeof(icmp_hdr) + Parameter.ICMP_PaddingLength;
 	else 
 		return false;
-	std::unique_ptr<uint8_t[]> SendBuffer(new uint8_t[Length + PADDING_RESERVED_BYTES]());
+	const auto SendBuffer = std::make_unique<uint8_t[]>(Length + PADDING_RESERVED_BYTES);
 	memset(SendBuffer.get(), 0, Length + PADDING_RESERVED_BYTES);
 	const auto ICMP_Header = reinterpret_cast<icmp_hdr *>(SendBuffer.get());
 	const auto ICMPv6_Header = reinterpret_cast<icmpv6_hdr *>(SendBuffer.get());
 	std::vector<SOCKET_DATA> ICMP_SocketData;
 #if defined(PLATFORM_LINUX)
-	std::uniform_int_distribution<uint32_t> RamdomDistribution(0, UINT32_MAX);
+#if !defined(ENABLE_LIBSODIUM)
+	std::uniform_int_distribution<uint32_t> RandomDistribution(0, UINT32_MAX);
+#endif
 #endif
 	time_t Timestamp = 0;
 
@@ -250,7 +270,11 @@ bool ICMP_TestRequest(
 		memcpy_s(SendBuffer.get() + sizeof(icmpv6_hdr), Parameter.ICMP_PaddingLength, Parameter.ICMP_PaddingData, Parameter.ICMP_PaddingLength);
 	#if defined(PLATFORM_LINUX)
 		ICMPv6_Header->Timestamp = static_cast<uint64_t>(Timestamp);
-		ICMPv6_Header->Nonce = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
+	#if defined(ENABLE_LIBSODIUM)
+		ICMPv6_Header->Nonce = randombytes_random();
+	#else
+		ICMPv6_Header->Nonce = RandomDistribution(*GlobalRunningStatus.RandomEngine);
+	#endif
 	#elif defined(PLATFORM_MACOS)
 		ICMPv6_Header->Timestamp = static_cast<uint64_t>(Timestamp);
 	#endif
@@ -262,6 +286,7 @@ bool ICMP_TestRequest(
 		SOCKET_DATA SocketDataTemp;
 		memset(&SocketDataTemp, 0, sizeof(SocketDataTemp));
 		SocketDataTemp.Socket = INVALID_SOCKET;
+//		int OptionValue = ICMPV6_OFFSET_CHECKSUM;
 
 	//Main
 	#if (defined(PLATFORM_WIN) || defined(PLATFORM_LINUX))
@@ -270,14 +295,16 @@ bool ICMP_TestRequest(
 		SocketDataTemp.Socket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6);
 	#endif
 		if (!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::INVALID_CHECK, true, nullptr) || 
-			!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::HOP_LIMITS_IPV6, true, nullptr))
+			!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::HOP_LIMITS_IPV6, true, nullptr) // || 
+//			!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::CHECKSUM_IPV6, true, &OptionValue) //ICMPv6 protocol checksum will always be calculated by network stack in all platforms.
+			)
 		{
 			SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::CLOSE, false, nullptr);
 			return false;
 		}
 		else {
 			SocketDataTemp.SockAddr.ss_family = Parameter.Target_Server_Main_IPv6.AddressData.Storage.ss_family;
-			(reinterpret_cast<sockaddr_in6 *>(&SocketDataTemp.SockAddr))->sin6_addr = Parameter.Target_Server_Main_IPv6.AddressData.IPv6.sin6_addr;
+			reinterpret_cast<sockaddr_in6 *>(&SocketDataTemp.SockAddr)->sin6_addr = Parameter.Target_Server_Main_IPv6.AddressData.IPv6.sin6_addr;
 			SocketDataTemp.AddrLen = sizeof(sockaddr_in6);
 			ICMP_SocketData.push_back(SocketDataTemp);
 			memset(&SocketDataTemp, 0, sizeof(SocketDataTemp));
@@ -287,13 +314,17 @@ bool ICMP_TestRequest(
 	//Alternate
 		if (Parameter.Target_Server_Alternate_IPv6.AddressData.Storage.ss_family != 0)
 		{
+//			OptionValue = ICMPV6_OFFSET_CHECKSUM;
+
 		#if (defined(PLATFORM_WIN) || defined(PLATFORM_LINUX))
 			SocketDataTemp.Socket = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
 		#elif defined(PLATFORM_MACOS)
 			SocketDataTemp.Socket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6);
 		#endif
 			if (!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::INVALID_CHECK, true, nullptr) || 
-				!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::HOP_LIMITS_IPV6, true, nullptr))
+				!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::HOP_LIMITS_IPV6, true, nullptr) // || 
+//				!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::CHECKSUM_IPV6, true, &OptionValue) //ICMPv6 protocol checksum will always be calculated by network stack in all platforms.
+				)
 			{
 				for (auto &SocketDataIter:ICMP_SocketData)
 					SocketSetting(SocketDataIter.Socket, SOCKET_SETTING_TYPE::CLOSE, false, nullptr);
@@ -302,7 +333,7 @@ bool ICMP_TestRequest(
 			}
 			else {
 				SocketDataTemp.SockAddr.ss_family = Parameter.Target_Server_Alternate_IPv6.AddressData.Storage.ss_family;
-				(reinterpret_cast<sockaddr_in6 *>(&SocketDataTemp.SockAddr))->sin6_addr = Parameter.Target_Server_Alternate_IPv6.AddressData.IPv6.sin6_addr;
+				reinterpret_cast<sockaddr_in6 *>(&SocketDataTemp.SockAddr)->sin6_addr = Parameter.Target_Server_Alternate_IPv6.AddressData.IPv6.sin6_addr;
 				SocketDataTemp.AddrLen = sizeof(sockaddr_in6);
 				ICMP_SocketData.push_back(SocketDataTemp);
 				memset(&SocketDataTemp, 0, sizeof(SocketDataTemp));
@@ -315,13 +346,17 @@ bool ICMP_TestRequest(
 		{
 			for (const auto &DNSServerDataIter:*Parameter.Target_Server_IPv6_Multiple)
 			{
+//				OptionValue = ICMPV6_OFFSET_CHECKSUM;
+
 			#if (defined(PLATFORM_WIN) || defined(PLATFORM_LINUX))
 				SocketDataTemp.Socket = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
 			#elif defined(PLATFORM_MACOS)
 				SocketDataTemp.Socket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6);
 			#endif
 				if (!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::INVALID_CHECK, true, nullptr) || 
-					!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::HOP_LIMITS_IPV6, true, nullptr))
+					!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::HOP_LIMITS_IPV6, true, nullptr) // || 
+//					!SocketSetting(SocketDataTemp.Socket, SOCKET_SETTING_TYPE::CHECKSUM_IPV6, true, &OptionValue) //ICMPv6 protocol checksum will always be calculated by network stack in all platforms.
+					)
 				{
 					for (auto &SocketDataIter:ICMP_SocketData)
 						SocketSetting(SocketDataIter.Socket, SOCKET_SETTING_TYPE::CLOSE, false, nullptr);
@@ -330,7 +365,7 @@ bool ICMP_TestRequest(
 				}
 				else {
 					SocketDataTemp.SockAddr.ss_family = DNSServerDataIter.AddressData.Storage.ss_family;
-					(reinterpret_cast<sockaddr_in6 *>(&SocketDataTemp.SockAddr))->sin6_addr = DNSServerDataIter.AddressData.IPv6.sin6_addr;
+					reinterpret_cast<sockaddr_in6 *>(&SocketDataTemp.SockAddr)->sin6_addr = DNSServerDataIter.AddressData.IPv6.sin6_addr;
 					SocketDataTemp.AddrLen = sizeof(sockaddr_in6);
 					ICMP_SocketData.push_back(SocketDataTemp);
 					memset(&SocketDataTemp, 0, sizeof(SocketDataTemp));
@@ -342,8 +377,7 @@ bool ICMP_TestRequest(
 //ICMP
 	else if (Protocol == AF_INET)
 	{
-	//Make a ICMP request echo packet.
-	//Calculate checksum to make sure that is correct.
+	//Make a ICMP request echo packet, calculate checksum to make sure that is correct.
 	//Windows: It seems that it's not calculating by network stack.
 	//Linux: Calculate by network stack.
 	//macOS: It seems that it's not calculating by network stack.
@@ -354,7 +388,11 @@ bool ICMP_TestRequest(
 		memcpy_s(SendBuffer.get() + sizeof(icmp_hdr), Parameter.ICMP_PaddingLength, Parameter.ICMP_PaddingData, Parameter.ICMP_PaddingLength);
 	#if defined(PLATFORM_LINUX)
 		ICMP_Header->Timestamp = static_cast<uint64_t>(Timestamp);
-		ICMP_Header->Nonce = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
+	#if defined(ENABLE_LIBSODIUM)
+		ICMP_Header->Nonce = randombytes_random();
+	#else
+		ICMP_Header->Nonce = RandomDistribution(*GlobalRunningStatus.RandomEngine);
+	#endif
 	#elif defined(PLATFORM_MACOS)
 		ICMP_Header->Timestamp = static_cast<uint64_t>(Timestamp);
 	#endif
@@ -383,7 +421,7 @@ bool ICMP_TestRequest(
 		}
 		else {
 			SocketDataTemp.SockAddr.ss_family = Parameter.Target_Server_Main_IPv4.AddressData.Storage.ss_family;
-			(reinterpret_cast<sockaddr_in *>(&SocketDataTemp.SockAddr))->sin_addr = Parameter.Target_Server_Main_IPv4.AddressData.IPv4.sin_addr;
+			reinterpret_cast<sockaddr_in *>(&SocketDataTemp.SockAddr)->sin_addr = Parameter.Target_Server_Main_IPv4.AddressData.IPv4.sin_addr;
 			SocketDataTemp.AddrLen = sizeof(sockaddr_in);
 			ICMP_SocketData.push_back(SocketDataTemp);
 			memset(&SocketDataTemp, 0, sizeof(SocketDataTemp));
@@ -409,7 +447,7 @@ bool ICMP_TestRequest(
 			}
 			else {
 				SocketDataTemp.SockAddr.ss_family = Parameter.Target_Server_Alternate_IPv4.AddressData.Storage.ss_family;
-				(reinterpret_cast<sockaddr_in *>(&SocketDataTemp.SockAddr))->sin_addr = Parameter.Target_Server_Alternate_IPv4.AddressData.IPv4.sin_addr;
+				reinterpret_cast<sockaddr_in *>(&SocketDataTemp.SockAddr)->sin_addr = Parameter.Target_Server_Alternate_IPv4.AddressData.IPv4.sin_addr;
 				SocketDataTemp.AddrLen = sizeof(sockaddr_in);
 				ICMP_SocketData.push_back(SocketDataTemp);
 				memset(&SocketDataTemp, 0, sizeof(SocketDataTemp));
@@ -438,7 +476,7 @@ bool ICMP_TestRequest(
 				}
 				else {
 					SocketDataTemp.SockAddr.ss_family = DNSServerDataIter.AddressData.Storage.ss_family;
-					(reinterpret_cast<sockaddr_in *>(&SocketDataTemp.SockAddr))->sin_addr = DNSServerDataIter.AddressData.IPv4.sin_addr;
+					reinterpret_cast<sockaddr_in *>(&SocketDataTemp.SockAddr)->sin_addr = DNSServerDataIter.AddressData.IPv4.sin_addr;
 					SocketDataTemp.AddrLen = sizeof(sockaddr_in);
 					ICMP_SocketData.push_back(SocketDataTemp);
 					memset(&SocketDataTemp, 0, sizeof(SocketDataTemp));
@@ -464,7 +502,7 @@ bool ICMP_TestRequest(
 	}
 
 //Send request.
-	std::unique_ptr<uint8_t[]> RecvBuffer(new uint8_t[NORMAL_PACKET_MAXSIZE + PADDING_RESERVED_BYTES]());
+	const auto RecvBuffer = std::make_unique<uint8_t[]>(NORMAL_PACKET_MAXSIZE + PADDING_RESERVED_BYTES);
 	SOCKET_DATA InnerSocketData;
 	memset(RecvBuffer.get(), 0, NORMAL_PACKET_MAXSIZE + PADDING_RESERVED_BYTES);
 	memset(&InnerSocketData, 0, sizeof(InnerSocketData));
@@ -511,9 +549,14 @@ bool ICMP_TestRequest(
 		//Test again check.
 			if (Protocol == AF_INET6)
 			{
-				if ((Parameter.Target_Server_Main_IPv6.HopLimitsData_Assign.HopLimit == 0 && Parameter.Target_Server_Main_IPv6.HopLimitsData_Mark.HopLimit == 0) || //Main
-					(Parameter.Target_Server_Alternate_IPv6.AddressData.Storage.ss_family != 0 && //Alternate
-					Parameter.Target_Server_Alternate_IPv6.HopLimitsData_Assign.HopLimit == 0 && Parameter.Target_Server_Alternate_IPv6.HopLimitsData_Mark.HopLimit == 0))
+				if (
+				//Main
+					(Parameter.Target_Server_Main_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Assign == 0 && 
+					Parameter.Target_Server_Main_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Mark == 0) || 
+				//Alternate
+					(Parameter.Target_Server_Alternate_IPv6.AddressData.Storage.ss_family != 0 && 
+					Parameter.Target_Server_Alternate_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Assign == 0 && 
+					Parameter.Target_Server_Alternate_IPv6.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Mark == 0))
 						goto JumpToRetest;
 
 			//Multiple list(IPv6)
@@ -521,16 +564,22 @@ bool ICMP_TestRequest(
 				{
 					for (const auto &DNSServerDataIter:*Parameter.Target_Server_IPv6_Multiple)
 					{
-						if (DNSServerDataIter.HopLimitsData_Assign.HopLimit == 0 && DNSServerDataIter.HopLimitsData_Mark.HopLimit == 0)
-							goto JumpToRetest;
+						if (DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Assign == 0 && 
+							DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv6_HeaderStatus.HopLimit_Mark == 0)
+								goto JumpToRetest;
 					}
 				}
 			}
 			else if (Protocol == AF_INET)
 			{
-				if ((Parameter.Target_Server_Main_IPv4.HopLimitsData_Assign.TTL == 0 && Parameter.Target_Server_Main_IPv4.HopLimitsData_Mark.TTL == 0) || //Main
-					(Parameter.Target_Server_Alternate_IPv4.AddressData.Storage.ss_family != 0 && //Alternate
-					Parameter.Target_Server_Alternate_IPv4.HopLimitsData_Assign.TTL == 0 && Parameter.Target_Server_Alternate_IPv4.HopLimitsData_Mark.TTL == 0))
+				if (
+				//Main
+					(Parameter.Target_Server_Main_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Assign == 0 && 
+					Parameter.Target_Server_Main_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Mark == 0) || 
+				//Alternate
+					(Parameter.Target_Server_Alternate_IPv4.AddressData.Storage.ss_family != 0 && 
+					Parameter.Target_Server_Alternate_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Assign == 0 && 
+					Parameter.Target_Server_Alternate_IPv4.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Mark == 0))
 						goto JumpToRetest;
 
 			//Multiple list(IPv4)
@@ -538,7 +587,7 @@ bool ICMP_TestRequest(
 				{
 					for (const auto &DNSServerDataIter:*Parameter.Target_Server_IPv4_Multiple)
 					{
-						if (DNSServerDataIter.HopLimitsData_Assign.TTL == 0 && DNSServerDataIter.HopLimitsData_Mark.TTL == 0)
+						if (DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Assign == 0 && DNSServerDataIter.ServerPacketStatus.NetworkLayerStatus.IPv4_HeaderStatus.TTL_Mark == 0)
 							goto JumpToRetest;
 					}
 				}
@@ -558,8 +607,16 @@ bool ICMP_TestRequest(
 		}
 
 	//Send and receive process
-		for (const auto &SocketDataIter:ICMP_SocketData)
+		for (auto &SocketDataIter:ICMP_SocketData)
 		{
+		//Socket check
+			if (!SocketSetting(SocketDataIter.Socket, SOCKET_SETTING_TYPE::INVALID_CHECK, true, nullptr))
+			{
+				SocketSetting(SocketDataIter.Socket, SOCKET_SETTING_TYPE::CLOSE, false, nullptr);
+				continue;
+			}
+
+		//Send and receive data.
 			IsAllSend = false;
 			for (size_t Index = 0;Index < Parameter.MultipleRequestTimes;++Index)
 			{
@@ -598,7 +655,11 @@ bool ICMP_TestRequest(
 						ICMPv6_Header->Sequence = htons(ntohs(ICMPv6_Header->Sequence) + 1U);
 				#if defined(PLATFORM_LINUX)
 					ICMPv6_Header->Timestamp = static_cast<uint64_t>(Timestamp);
-					ICMPv6_Header->Nonce = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
+				#if defined(ENABLE_LIBSODIUM)
+					ICMPv6_Header->Nonce = randombytes_random();
+				#else
+					ICMPv6_Header->Nonce = RandomDistribution(*GlobalRunningStatus.RandomEngine);
+				#endif
 				#elif defined(PLATFORM_MACOS)
 					ICMPv6_Header->Timestamp = static_cast<uint64_t>(Timestamp);
 				#endif
@@ -611,7 +672,11 @@ bool ICMP_TestRequest(
 						ICMP_Header->Sequence = htons(ntohs(ICMP_Header->Sequence) + 1U);
 				#if defined(PLATFORM_LINUX)
 					ICMP_Header->Timestamp = static_cast<uint64_t>(Timestamp);
-					ICMP_Header->Nonce = RamdomDistribution(*GlobalRunningStatus.RamdomEngine);
+				#if defined(ENABLE_LIBSODIUM)
+					ICMP_Header->Nonce = randombytes_random();
+				#else
+					ICMP_Header->Nonce = RandomDistribution(*GlobalRunningStatus.RandomEngine);
+				#endif
 				#elif defined(PLATFORM_MACOS)
 					ICMP_Header->Timestamp = static_cast<uint64_t>(Timestamp);
 				#endif
@@ -685,7 +750,7 @@ size_t TCP_RequestSingle(
 	ssize_t ErrorCode = 0;
 	const auto RecvLen = SocketSelectingOnce(RequestType, IPPROTO_TCP, TCPSocketDataList, nullptr, SendBuffer, DataLength, OriginalRecv, RecvSize, &ErrorCode, LocalSocketData);
 	if (ErrorCode == WSAETIMEDOUT && IsAlternate != nullptr && !*IsAlternate && //Mark timeout.
-		(!Parameter.AlternateMultipleRequest || RequestType == REQUEST_PROCESS_TYPE::LOCAL))
+		(!Parameter.AlternateMultipleRequest || RequestType == REQUEST_PROCESS_TYPE::LOCAL_NORMAL || RequestType == REQUEST_PROCESS_TYPE::LOCAL_IN_WHITE))
 			++(*AlternateTimeoutTimes);
 
 //Close all sockets.
@@ -854,7 +919,7 @@ size_t UDP_CompleteRequestSingle(
 	ssize_t ErrorCode = 0;
 	const auto RecvLen = SocketSelectingOnce(RequestType, IPPROTO_UDP, UDPSocketDataList, nullptr, OriginalSend, SendSize, OriginalRecv, RecvSize, &ErrorCode, LocalSocketData);
 	if (ErrorCode == WSAETIMEDOUT && IsAlternate != nullptr && !*IsAlternate && //Mark timeout.
-		(!Parameter.AlternateMultipleRequest || RequestType == REQUEST_PROCESS_TYPE::LOCAL))
+		(!Parameter.AlternateMultipleRequest || RequestType == REQUEST_PROCESS_TYPE::LOCAL_NORMAL || RequestType == REQUEST_PROCESS_TYPE::LOCAL_IN_WHITE))
 			++(*AlternateTimeoutTimes);
 
 //Close all sockets.
@@ -874,10 +939,10 @@ size_t UDP_CompleteRequestMultiple(
 	const SOCKET_DATA * const LocalSocketData)
 {
 //Initialization
-	std::vector<SOCKET_DATA> UDPSocketDataList;
 	memset(OriginalRecv, 0, RecvSize);
 
 //Socket initialization
+	std::vector<SOCKET_DATA> UDPSocketDataList;
 	if (!SelectTargetSocketMultiple(IPPROTO_UDP, UDPSocketDataList))
 		return EXIT_FAILURE;
 

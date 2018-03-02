@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -32,7 +32,7 @@ bool ReadCommand(
 {
 //Path initialization
 #if defined(PLATFORM_WIN)
-	std::unique_ptr<wchar_t[]> FilePathBuffer(new wchar_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	auto FilePathBuffer = std::make_unique<wchar_t[]>(FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	wmemset(FilePathBuffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	std::wstring FilePathString;
 	size_t BufferSize = FILE_BUFFER_SIZE;
@@ -68,7 +68,7 @@ bool ReadCommand(
 			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
 		#endif
 			{
-				std::unique_ptr<wchar_t[]> FilePathBufferTemp(new wchar_t[BufferSize + FILE_BUFFER_SIZE]());
+				auto FilePathBufferTemp = std::make_unique<wchar_t[]>(BufferSize + FILE_BUFFER_SIZE);
 				wmemset(FilePathBufferTemp.get(), 0, BufferSize + FILE_BUFFER_SIZE);
 				std::swap(FilePathBuffer, FilePathBufferTemp);
 				BufferSize += FILE_BUFFER_SIZE;
@@ -306,20 +306,24 @@ bool ReadCommand(
 			if (FileHandle != nullptr)
 			{
 			//Initialization and make keypair.
-				std::unique_ptr<uint8_t[]> Buffer(new uint8_t[DNSCRYPT_KEYPAIR_MESSAGE_LEN + PADDING_RESERVED_BYTES]());
-				sodium_memzero(Buffer.get(), DNSCRYPT_KEYPAIR_MESSAGE_LEN + PADDING_RESERVED_BYTES);
+				const auto Buffer = std::make_unique<uint8_t[]>(DNSCRYPT_KEYPAIR_MESSAGE_LEN + PADDING_RESERVED_BYTES);
+				memset(Buffer.get(), 0, DNSCRYPT_KEYPAIR_MESSAGE_LEN + PADDING_RESERVED_BYTES);
 				DNSCURVE_HEAP_BUFFER_TABLE<uint8_t> SecretKey(crypto_box_SECRETKEYBYTES);
 				uint8_t PublicKey[crypto_box_PUBLICKEYBYTES]{0};
 				size_t InnerIndex = 0;
 
-			//Generator a ramdon keypair and write public key.
+			//Generate a random keypair and write public key.
 				if (crypto_box_keypair(
 						PublicKey, 
 						SecretKey.Buffer) != 0 || 
-					sodium_bin2hex(reinterpret_cast<char *>(Buffer.get()), DNSCRYPT_KEYPAIR_MESSAGE_LEN, PublicKey, crypto_box_PUBLICKEYBYTES) == nullptr)
+					sodium_bin2hex(
+						reinterpret_cast<char *>(Buffer.get()), 
+						DNSCRYPT_KEYPAIR_MESSAGE_LEN, 
+						PublicKey, 
+						crypto_box_PUBLICKEYBYTES) == nullptr)
 				{
 					fclose(FileHandle);
-					PrintToScreen(true, L"[System Error] Create ramdom key pair failed, please try again.\n");
+					PrintToScreen(true, L"[System Error] Create random key pair failed, please try again.\n");
 
 					return false;
 				}
@@ -335,14 +339,18 @@ bool ReadCommand(
 
 					fwprintf_s(FileHandle, L"%c", Buffer.get()[InnerIndex]);
 				}
-				sodium_memzero(Buffer.get(), DNSCRYPT_KEYPAIR_MESSAGE_LEN);
+				memset(Buffer.get(), 0, DNSCRYPT_KEYPAIR_MESSAGE_LEN);
 				fwprintf_s(FileHandle, L"\n");
 
 			//Write secret key.
-				if (sodium_bin2hex(reinterpret_cast<char *>(Buffer.get()), DNSCRYPT_KEYPAIR_MESSAGE_LEN, SecretKey.Buffer, crypto_box_SECRETKEYBYTES) == nullptr)
+				if (sodium_bin2hex(
+						reinterpret_cast<char *>(Buffer.get()), 
+						DNSCRYPT_KEYPAIR_MESSAGE_LEN, 
+						SecretKey.Buffer, 
+						crypto_box_SECRETKEYBYTES) == nullptr)
 				{
 					fclose(FileHandle);
-					PrintToScreen(true, L"[System Error] Create ramdom key pair failed, please try again.\n");
+					PrintToScreen(true, L"[System Error] Create random key pair failed, please try again.\n");
 
 					return false;
 				}
@@ -368,7 +376,7 @@ bool ReadCommand(
 				PrintToScreen(true, L"[System Error] Cannot create target file(KeyPair.txt).\n");
 			}
 		#else
-			PrintToScreen(true, L"[Notice] LibSodium is disable.\n");
+			PrintToScreen(true, L"[Notice] LibSodium is disabled.\n");
 		#endif
 
 			return false;
@@ -425,14 +433,14 @@ bool ReadCommand(
 			GlobalRunningStatus.IsDaemon = false;
 		}
 	#elif defined(PLATFORM_WIN)
-	//Windows Firewall Test in first start.
+	//Firewall Test in first start.
 		else if (InsensitiveString == COMMAND_FIREWALL_TEST)
 		{
 			ssize_t ErrorCode = 0;
 			if (!FirewallTest(AF_INET6, ErrorCode) && !FirewallTest(AF_INET, ErrorCode))
-				PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::NETWORK, L"Windows Firewall Test error", ErrorCode, nullptr, 0);
+				PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::NETWORK, L"Firewall test error", ErrorCode, nullptr, 0);
 			else 
-				PrintToScreen(true, L"[Notice] Windows Firewall test is successful.\n");
+				PrintToScreen(true, L"[Notice] Firewall test is successful.\n");
 
 			return false;
 		}
@@ -461,7 +469,8 @@ bool FileNameInit(
 )
 {
 #if defined(PLATFORM_WIN)
-//Path process(The path is location path with backslash not including module name at the end of this process, like "System:\\xxx\\")
+//Path process
+//The path is location path with backslash not including module name at the end of this process, like "System:\\xxx\\".
 //The path is full path name including module name from file name initialization.
 //The path is location path not including module name from set path command.
 	GlobalRunningStatus.Path_Global->clear();
@@ -479,7 +488,8 @@ bool FileNameInit(
 		}
 	}
 #elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
-//Path process(The path is location path with slash not including module name at the end of this process, like "/xxx/")
+//Path process
+//The path is location path with slash not including module name at the end of this process, like "/xxx/".
 	GlobalRunningStatus.MBS_Path_Global->clear();
 	GlobalRunningStatus.MBS_Path_Global->push_back(OriginalPath);
 	std::wstring StringTemp;

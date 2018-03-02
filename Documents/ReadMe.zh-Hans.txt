@@ -24,7 +24,7 @@ https://sourceforge.net/projects/pcap-dnsproxy
 
 4.确定工具目录的名称和路径后进入目录内，右键以管理员身份(Vista 以及更新版本)或直接以管理员登录双击(XP/2003)运行 ServiceControl.bat
   * 输入 1 并回车，即选择 "1: Install service" 安装服务
-  * 批处理会将程序注册系统服务，并进行 Windows 防火墙测试，每次开机服务都将自动启动
+  * 批处理会将程序注册系统服务，并进行防火墙测试，每次开机服务都将自动启动
   * 此时 Windows 系统会询问是否同意程序访问网络，请将 "专用网络" 以及 "公用网络" 都勾上并确认
 
 5.请按照下文 正常工作查看方法 一节，先对程序是否在正常工作进行测试再修改网络配置！
@@ -43,7 +43,7 @@ https://sourceforge.net/projects/pcap-dnsproxy
     * Direct Request = IPv4
     * Direct Request = IPv6
     * Direct Request = IPv4 + IPv6
-    * 更多的情况是系统路由级别的代理会通过虚拟网络适配器进行连接，此时的 DNS 由代理自行控制，此时则不需要进行任何操作
+    * 更多的情况是系统路由级别的代理会通过虚拟网络适配器进行连接，此时的 DNS 由代理自行控制则不需要进行任何操作
   * 配置文件 Hosts 文件 IPFilter 文件和错误报告所在的目录以上文 安装方法 一节中第 4 步注册的服务信息为准
     * 填写时一行不要超过 4096 字节/4KB
     * 文件读取只支持整个文本单一的编码和换行格式组合，切勿在文本文件中混合所支持的编码或换行格式！
@@ -69,7 +69,7 @@ https://sourceforge.net/projects/pcap-dnsproxy
 3.右键以管理员身份(Vista 以及更新版本)或直接以管理员登录双击(XP/2003)运行 ServiceControl.bat
 4.输入 2 并回车，即选择 "2: Uninstall service" 卸载服务
 5.将整个 Pcap_DNSProxy 程序的目录删除。注意 Windows 防火墙可能会留有允许程序访问网络的信息，卸载服务后又变更了程序的目录则可能需要使用注册表清理工具清理
-6.将新版本的 Pcap_DNSProxy 解压到任何位置（亦即 安装方法 中第3步）
+6.将新版本的 Pcap_DNSProxy 解压到任何位置（亦即 安装方法 中第 3 步）
 7.将配置文件的自定义内容加回新版本配置文件里相应的区域内
 8.按照 安装方法 中第4步重新部署 Pcap_DNSProxy
 
@@ -220,7 +220,7 @@ https://sourceforge.net/projects/pcap-dnsproxy
     * 1 为输出重大错误
     * 2 为输出一般错误
     * 3 为输出所有错误
-  * Log Maximum Size - 日志文件最大容量：直接填数字时单位为字节，可加上单位，支持的单位有 KB/MB/GB，可接受范围为 4KB - 512MB，如果留空则为 8MB
+  * Log Maximum Size - 日志文件最大容量：直接填数字时单位为字节，可加上单位，支持的单位有 KB/MB/GB，可接受范围为 4 KB - 256 MB，如果留空则为 8 MB
     * 注意：日志文件到达最大容量后将被直接删除，然后重新生成新的日志文件，原来的日志将无法找回！
 
 * Listen - 监听参数区域
@@ -343,7 +343,7 @@ https://sourceforge.net/projects/pcap-dnsproxy
     * 同时填入 IPv4 和 IPv6 或直接不填任何网络层协议时，程序将根据网络环境自动选择所使用的协议
     * 同时填入 TCP 和 UDP 等于只填入 TCP 因为 UDP 为 DNS 的标准网络层协议，所以即使填入 TCP 失败时也会使用 UDP 请求
     * 填入 Force TCP 可阻止 TCP 请求失败后使用 UDP 重新尝试请求
-  * Direct Request - 直连模式，启用后将使用系统的 API 直接请求远程服务器而启用只使用本工具的 Hosts 功能：可填入 IPv4 和 IPv6 和 0，关闭为 0
+  * Direct Request - 直连模式，启用后将使用系统的 API 直接请求远程服务器：可填入 IPv4 和 IPv6 和 0，关闭为 0
     * 建议当系统使用全局代理功能时启用，程序将除境内服务器外的所有请求直接交给系统而不作任何过滤等处理，系统会将请求自动发往远程服务器进行解析
     * 填入 IPv4 或 IPv6 时将会启用对应协议的 Direct Request 功能，填入 IPv4 + IPv6 将会启用所有协议的功能
   * Cache Type - DNS 缓存的类型：分 Timer/计时型、Queue/队列型以及它们的混合类型，填入 0 为关闭此功能
@@ -381,15 +381,19 @@ https://sourceforge.net/projects/pcap-dnsproxy
   * Local Routing - 境内路由表识别功能：开启为 1 /关闭为 0
     * 本功能开启后所有请求都会先发送至境内服务器进行域名解析，再根据解析结果进行下一步的操作
   * Local Force Request - 强制使用境内服务器进行解析：开启为 1 /关闭为 0
-    * 本功能要求启用 Local Hosts 参数
-  * 注意：关于 Local Force Request 和 Local Hosts 和 Local Routing 的组合说明
-    * 所有参数均为关闭时：直接跳过使用境内服务器进行域名解析的过程
+  * 注意：关于 Local Hosts 和 Local Routing 和 Local Force Request 的组合说明
     * 默认情况下在境内服务器解析失败会进行下一步的操作
-    * 只开启 Local Hosts 时：将按照（黑）白名单（无）命中规则的域名，才（不）使用境内服务器进行解析
-      * 开启 Local Force Request 参数时，则强制已命中规则的域名只能使用境内服务器进行解析
-    * 只开启 Local Routing 时：所有请求都会先发送至境内服务器进行域名解析，然后根据路由表进行匹配，命中路由表的解析结果将直接返回给请求者
-    * 同时开启 Local Hosts 和 Local Routing 时：所有（除了黑名单所指定的）请求都会先发送至境内服务器进行域名解析，然后根据路由表进行匹配，命中路由表的解析结果将直接返回给请求者
-      * 开启 Local Force Request 参数时，则强制已命中规则的域名只能使用境内服务器进行解析
+    * 所有参数均为关闭时，直接跳过使用境内服务器进行域名解析的过程
+    * Local Hosts 可以单独开启：将按照（黑）白名单（无）命中规则的域名，才（不）使用境内服务器进行解析
+    * Local Routing 可以单独开启：所有请求都会先发送至境内服务器进行域名解析，然后根据路由表进行匹配，命中路由表的解析结果将直接返回给请求者
+    * Local Force Request 不能单独启用：需要和 Local Hosts 配合使用
+    * Local Hosts + Local Routing 不能同时启用：功能冲突
+    * Local Hosts + Local Force Request 可以同时启用：强制已命中规则的域名只能使用境内服务器进行解析，解析结果有问题将直接丢弃并终止整个解析过程
+    * Local Routing + Local Force Request 不能同时启用：功能冲突
+    * Local Hosts + Local Routing + Local Force Request 可以同时启用：所有（除了黑名单所指定的）请求都会先发送至境内服务器进行域名解析，根据请求的性质：
+      * 如果该请求的域名命中 Local Hosts 则强制已命中规则的域名只能使用境内服务器进行解析，解析结果有问题将直接丢弃并终止整个解析过程
+      * 如果该请求的域名没有命中 Local Hosts 则根据路由表进行匹配，命中路由表的解析结果将直接返回给请求者
+      * 所有没有命中且没有成功匹配路由表的请求将会进行下一步的操作
 
 * Addresses - 普通模式地址区域
   * IPv4 Listen Address - IPv4 本地监听地址：需要输入一个带端口格式的地址，留空为不启用
@@ -599,7 +603,7 @@ https://sourceforge.net/projects/pcap-dnsproxy
 * Switches - 控制开关区域
   * Domain Case Conversion - 随机转换域名请求大小写：开启为 1 /关闭为 0
   * Compression Pointer Mutation - 随机添加压缩指针：可填入 1 (+ 2 + 3)，关闭为 0
-    * 随机添加压缩指针有3种不同的类型，对应 1 和 2 和 3
+    * 随机添加压缩指针有 3 种不同的类型，对应 1 和 2 和 3
     * 可单独使用其中一个，即只填一个数字，或填入多个，中间使用 + 号连接
     * 填入多个时，当实际需要使用随机添加压缩指针时将随机使用其中的一种，每个请求都有可能不相同
   * EDNS Label - EDNS 标签支持，开启后将为请求添加 EDNS 标签：全部开启为 1 /关闭为 0
@@ -612,24 +616,19 @@ https://sourceforge.net/projects/pcap-dnsproxy
   * DNSSEC Request - DNSSEC 请求，开启后将尝试为所有请求添加 DNSSEC 请求：开启为 1 /关闭为 0
     * 本功能要求启用 EDNS Label 参数
     * 此功能不具备任何验证 DNSSEC 记录的能力，单独开启理论上并不能避免 DNS 投毒污染的问题
-  * DNSSEC Validation - DNSSEC 记录验证功能，将检查所有带有 DNSSEC 记录的域名解析，验证失败将被丢弃：开启为 1 /关闭为 0
+  * DNSSEC Force Record - 强制 DNSSEC 记录验证功能，将丢弃所有支持 DNSSEC 功能但是没有任何 DNSSEC 记录的域名解析：开启为 1 /关闭为 0
     * 本功能要求启用 EDNS Label 和 DNSSEC Request 参数
     * 此功能不具备完整的 DNSSEC 记录检验的能力，单独开启理论上不能避免 DNS 投毒污染的问题
-    * 本功能不检查不存在 DNSSEC 记录的域名解析
-  * DNSSEC Force Validation - 强制 DNSSEC 记录验证功能，将丢弃所有没有 DNSSEC 记录的域名解析：开启为 1 /关闭为 0
-    * 本功能要求启用 EDNS Label、DNSSEC Request 和 DNSSEC Validation 参数
-    * 此功能不具备完整的 DNSSEC 记录检验的能力，单独开启理论上不能避免 DNS 投毒污染的问题
-    * 警告：由于现时已经部署 DNSSEC 的域名数量极少，未部署 DNSSEC 的域名解析没有 DNSSEC 记录，这将导致所有未部署 DNSSEC 的域名解析失败，现阶段切勿开启本功能！
+    * 警告：由于现时已经部署 DNSSEC 的域名数量极少，未部署 DNSSEC 的域名解析没有 DNSSEC 记录，这将导致所有未部署 DNSSEC 的域名解析失败！
   * Alternate Multiple Request - 备用服务器同时请求参数，开启后将同时请求主要服务器和备用服务器并采用最快回应的服务器的结果：开启为 1 /关闭为 0
     * 同时请求多服务器启用后本参数将强制启用，将同时请求所有存在于列表中的服务器，并采用最快回应的服务器的结果
   * IPv4 Do Not Fragment - IPv4 数据包头部 Do Not Fragment 标志：开启为 1 /关闭为 0
     * 本功能不支持 macOS 平台，此平台将直接忽略此参数
-  * IPv4 Data Filter - IPv4 数据包头检测：开启为 1 /关闭为 0
   * TCP Data Filter - TCP 数据包头检测：开启为 1 /关闭为 0
   * DNS Data Filter - DNS 数据包头检测：开启为 1 /关闭为 0
   * Blacklist Filter - 解析结果黑名单过滤：开启为 1 /关闭为 0
-  * Strict Resource Record TTL Filter - 严格的资源记录生存时间过滤，标准要求同一名称和类型的资源记录必须具有相同的生存时间：开启为 1/关闭为 0
-  
+  * Resource Record Set TTL Filter - 严格的资源记录生存时间过滤：开启为 1/关闭为 0
+
 * Data - 数据区域
   * ICMP ID - ICMP/Ping 数据包头部 ID 的值：格式为 0x**** 的十六进制字符，如果留空则获取线程的 ID 作为请求用 ID
   * ICMP Sequence - ICMP/Ping 数据包头部 Sequence/序列号 的值：格式为 0x**** 的十六进制字符，如果留空则为从 0x0001 开始每个请求回环式递增
@@ -716,7 +715,7 @@ https://sourceforge.net/projects/pcap-dnsproxy
     * 填入 Force TCP 可阻止 TCP 请求失败后使用 UDP 重新尝试请求
   * DNSCurve Payload Size - DNSCurve 标签附带使用的最大载荷长度，同时亦为发送请求的总长度，并决定请求的填充长度：单位为字节
     * 最小为 DNS 协议实现要求的 512，留空则为 512
-    * 最大为 1500 减去 DNSCurve 头长度，建议不要超过 1220
+    * 最大为 Ethernet MTU 减去 DNSCurve 头长度，建议不要超过 1220
     * DNSCurve 协议要求此值必须为 64 的倍数
   * DNSCurve Reliable Socket Timeout - 可靠 DNSCurve 协议端口超时时间，可靠端口指 TCP 协议：单位为毫秒，最小为 500 可留空，留空时为 3000
   * DNSCurve Unreliable Socket Timeout - 不可靠 DNSCurve 协议端口超时时间，不可靠端口指 UDP 协议：单位为毫秒，最小为 500 可留空，留空时为 2000
@@ -1045,10 +1044,9 @@ IPFilter 配置文件分为 Blacklist/黑名单区域 和 IPFilter/地址过滤�
 * Multiple Request Times
 * Domain Case Conversion
 * IPv4 Do Not Fragment
-* IPv4 Data Filter
 * TCP Data Filter
 * DNS Data Filter
-* Strict Resource Record TTL Filter
+* Resource Record Set TTL Filter
 * Domain Test Protocol
 * SOCKS Target Server
 * SOCKS Username

@@ -1,7 +1,7 @@
-﻿Pcap_DNSProxy 專案的 GitHub 頁面：
+﻿Pcap_DNSProxy project in GitHub:
 https://github.com/chengr28/Pcap_DNSProxy
 
-Pcap_DNSProxy 專案的 Sourceforge 頁面：
+Pcap_DNSProxy project in Sourceforge:
 https://sourceforge.net/projects/pcap-dnsproxy
 
 
@@ -24,7 +24,7 @@ Installation method (required as administrator):
 
 4. After determining the name and path of the tool directory, go to the directory and right-click on the administrator (Vista and later) or run the ServiceControl.bat (XP / 2003) by pressing the administrator login twice (XP / 2003)
   * Enter 1 and press Enter, select "1: Install service" to install the service
-  * Batch processing will program the system services, and Windows firewall test, each boot service will automatically start
+  * Batch processing will program the system services, and firewall test, each boot service will automatically start
   * At this point, the Windows system asks if you want to agree to programmatically access the network. Please tick "private network" and "public network" and confirm
 
 5. Please follow the following section of the normal work to see the method, the first test whether the normal work and then modify the network settings!
@@ -53,6 +53,7 @@ Installation method (required as administrator):
   * The names of directories and programs can be changed at will, but be sure to complete the installation method before step 4. If the path to the tool directory is to be moved after the service is registered, see the precautions in step 2 above.
   * Windows XP If there is a 10022 error, you need to enable the system's IPv6 support (run administrator as an administrator to enter ipv6 install and enter, one-time operation), and then reboot service
   * This project only provides technical support for the latest version, the new version of the release of the old version of the support will immediately stop, please be sure to upgrade to the latest version
+
 
 -------------------------------------------------------------------------------
 
@@ -85,6 +86,7 @@ Unload method (required as administrator):
   * Note: Windows Firewall may have permission to access the network information, it may need to use the registry cleanup after the clean-up
   * Transfer the tool directory path does not need to uninstall the service, first stop the service transfer, transfer is completed after the restart service
 
+
 -------------------------------------------------------------------------------
 
 
@@ -110,6 +112,7 @@ Normal work View method:
 
 -------------------------------------------------------------------------------
 
+
 Special use skills:
 Here are some of the proposed project group introduction and use of skills for your reference and use. For details on adjusting the configuration, see the section below
 
@@ -128,13 +131,15 @@ Here are some of the proposed project group introduction and use of skills for y
   * DNSCurve = 1 simultaneous Encryption = 1: use DNSCurve (DNSCrypt) encryption mode request function variable name resolution
     * This combination of encrypted transmission of all functional variable name request, function variable name resolution reliability of the highest
   * DNSCurve = 1 simultaneous Encryption = 1 At the same time Encryption Only = 1: only use DNSCurve (DNSCrypt) encryption mode request function variable name resolution
-    * The above encryption combination does not prevent the program from requesting DNSCurve (DNSCrypt) encryption mode failure is to use other protocol request function variable name resolution, open Encryption Only = 1 will only allow the use of encrypted transmission, the highest security and reliability, but Functional variable name resolution success rate may decline
+    * The above encryption combination does not prevent the program from request DNSCurve (DNSCrypt) encryption mode failure is to use other protocol request function variable name resolution, open Encryption Only = 1 will only allow the use of encrypted transmission, the highest security and reliability, but Functional variable name resolution success rate may decline
 * Optimize the large number of requests under the program performance:
-  * Pcap Reading Timeout This parameter allows the packet capture module to crawl the packet at a higher frequency,
+  * Pcap Reading Timeout This parameter allows the packet capture module to crawl the packet at a higher frequency
   * Cache Parameter + Default TTL as much as possible to increase the parameters of the cache can increase the retention time or queue length, increase the cache hit rate
   * Thread Pool Maximum Number This parameter can be increased by increasing the maximum number of buffers that can be requested
   * Queue Limits Reset Time Do not turn on parameters that limit the number of requests
   * Multiple Request Times is extremely harsh, caution, consumes a lot of system resources and will increase the delay
+
+
 -------------------------------------------------------------------------------
 
 
@@ -161,6 +166,7 @@ Function and technology:
   * DNSCurve agreement for Streamlined / Lite type
   * Automatically get the connection information must ensure that the system time is correct, otherwise the certificate will lead to failure to get the connection information failed!
   * DNSCrypt official tool will take up the local DNS port caused Pcap_DNSProxy deployment failed!
+
 
 -------------------------------------------------------------------------------
 
@@ -215,16 +221,16 @@ Base - the basic parameter area
     * 1 for outputting a major error
     * 2 for output general error
     * 3 for outputting all errors
-  * Maximum size of log file: Maximum capacity of log file: The unit can be added to the unit, the unit is KB / MB / GB, the acceptable range is 4KB - 512MB, if it is blank, 8MB
+  * Maximum size of log file: Maximum capacity of log file: The unit can be added to the unit, the unit is KB / MB / GB, the acceptable range is 4 KB - 256 MB, if it is blank, 8 MB
     * Note: log file reaches the maximum capacity will be deleted directly, and then re-generate a new log file, the original log will not be able to recover!
 
 * Listen - Listen to parameter areas
-  * Process Unique - Process instance uniqueness check switch: On for 1 / off to 0
+  * Process Unique - Process instance uniqueness check switch: 1 to enable/0 to disable.
     * Only one program instance can only be run at the same time
     * When the program is closed, the number of instances will not be checked, the program can run multiple and listen to different combinations of addresses and ports, but the functions that depend on the system's global features will not be available:
       * The address and port combination between different instances can not be repeated, otherwise it will not work because the listening conflict does not work
       * Plug-in parameters --flush-dns (Domain) will not be used, then if you need to clear the program's internal DNS cache, you can edit the profile to change the file modification time
-  * Pcap Capture - capturing the function of the main switch, open the packet capture module can be used normally: open to 1 / off to 0
+  * Pcap Capture - capturing the function of the main switch, open the packet capture module can be used normally: 1 to enable/0 to disable.
     * Note: If the packet capture module is closed, it will automatically open the Direct Request function, enable Direct Request on the DNS poisoning pollution defensive ability is relatively weak
   * Pcap Devices Blacklist - Specifies that the network interface card containing this string will be ignored by capturing the network interface card containing this name, name or description
     * This parameter supports the designation of multiple names, case insensitive, formatted as "the name of the web interface card (name of the web interface card)" (without quotation marks, optional items in brackets)
@@ -233,7 +239,7 @@ Base - the basic parameter area
     * Read the timeout time need to balance the demand and resource consumption, the time set too long will lead to the domain name resolution request response slow response request timeout, too fast will take up too much system to deal with resources
   * Listen Protocol - the protocol supported by the local listening request: can be filled with IPv4 and IPv6 and TCP and UDP
     * Fill in the agreement can be arbitrarily combined, only fill IPv4 or IPv6 with UDP or TCP, only listen to the specified agreement of the local port
-    * Note: The agreement here refers to the protocol that can be used when requesting the function variable name resolution, and the protocol used by the program requesting the remote DNS server is determined by the Protocol parameter
+    * Note: The agreement here refers to the protocol that can be used when request the function variable name resolution, and the protocol used by the program request the remote DNS server is determined by the Protocol parameter
   * Listen Port - the port of the listening port, the local listening request: the format "port A (| port B)" (without quotation marks, brackets are optional items)
     * Port can be filled in the service name, service name list see below
     * Can also fill in the port between 1-65535, if left to 53
@@ -338,7 +344,7 @@ Base - the basic parameter area
     * When you fill in both IPv4 and IPv6 or do not fill in any network layer agreements, the program will automatically select the protocol to be used according to the web environment
     * At the same time fill in TCP and UDP is equal to only fill in TCP because UDP is the standard network layer protocol for DNS, so even when the TCP fails to fill the UDP request
     * Fill in Force TCP to prevent TCP requests from failing to use UDP to retry requests
-  * Direct Request - Direct connection mode, enable the system will use the system directly request the remote server and enable the use of the tool only Hosts function: can fill in IPv4 and IPv6 and 0, turn off to 0
+  * Direct Request - Direct connection mode, enable the system will use the system directly request the remote server: can fill in IPv4 and IPv6 and 0, turn off to 0
     * It is recommended when the system uses the global proxy function, the program will be in addition to all the requests outside the domestic server directly to the system without any filtering and other processing, the system will automatically send the request to the remote server for analysis
     * When you fill in IPv4 or IPv6, you will enable the Direct Request function of the corresponding protocol. Filling in IPv4 + IPv6 will enable all protocol functions
   * Cache Type - the type of DNS cache: sub-Timer / Chrono, Queue / Queue type and their mixed type, fill in 0 to turn off this feature
@@ -370,25 +376,29 @@ Base - the basic parameter area
       * If you fill 0, the final cache time is TTL
   
 * Local DNS - Domestic function variable name resolution parameter area
-  * Local Protocol - the protocol used to send the request to the domestic DNS server: can be filled with IPv4 and IPv6 and TCP and UDP
-    * Fill in the agreement can be arbitrarily combined, only fill IPv4 or IPv6 with UDP or TCP, only use the specified agreement to the domestic DNS server to issue a request
-    * When you fill in both IPv4 and IPv6 or do not fill in any network layer agreements, the program will automatically select the protocol to be used according to the web environment
-    * At the same time fill in TCP and UDP is equal to only fill in TCP because UDP is the standard network layer protocol for DNS, so even when the TCP fails to fill the UDP request
-    * Fill in Force TCP to prevent TCP requests from failing to use UDP to retry requests
-  * Local Hosts - White List Local Server Request Function: On 1 / Off to 0
-    * This feature will not attempt to read the data in the Local Hosts whitelist and will not read any whitelist data when it is closed
-  * Local Routing - Local routing table recognition function: On is 1 / off is 0
-    * After this function is enabled, all requests will be sent to the local server for functional variable name resolution, and then according to the results of the next analysis of the operation
-  * Local Force Request - Forced use of the domestic server for resolution: On for 1 / off to 0
-    * This feature requires that the Local Hosts parameter be enabled
-  * Note: A description of the combination of Local Force Request and Local Hosts and Local Routing
-    * When all parameters are off: skip the process of using the domestic server to perform functional variable name resolution
-    * The next step in the case of server resolution failure will proceed to the next step
-    * Only when Local Hosts is enabled: will be followed by the (black) white list (none) hit the function variable name of the rule before it can be resolved using the domestic server
-    * When the Local Force Request parameter is on, the function variable of the forced hit rule can only be resolved using the domestic server
-      * Only when Local Routing is enabled: all requests are sent to the local server for function variable name resolution, and then match according to the routing table, the result of the hit routing table will be returned directly to the requestor
-    * When both Local Hosts and Local Routing are enabled, all requests (except those specified by the blacklist) are sent to the local server for functional variable name resolution, and then match according to the routing table. The result of the hit routing table will be returned directly to Requester
-      * When the Local Force Request parameter is on, the function variable of the forced hit rule can only be resolved using the domestic server
+  * Local Protocol - protocol used to send requests to the internal DNS server: Fill in IPv4 and IPv6 and TCP and UDP
+    * Fill in the agreement can be arbitrarily combined, filling only IPv4 or IPv6 With UDP or TCP, only use the specified protocol to the internal DNS server request
+    * Fill both IPv4 and IPv6 at the same time or do not fill in any network layer protocol, the program will automatically select the protocol used according to the network environment
+    * Fill in TCP and UDP at the same time equals fill in only TCP Because UDP is the standard network layer protocol for DNS, UDP requests are used even if TCP fills in.
+    * Fill in Force TCP to prevent TCP requests from retrying requests using UDP after they fail
+  * Local Hosts - Whitelist Domestic Server Request Features: On 1 / Off 0
+    * This function will only try to read the data in the Local Hosts whitelist and will not read any white list data when it is off
+  * Local Routing - Local routing table identification: open to 1 / off to 0
+    * After this function is enabled, all requests will be sent to the domestic server for domain name resolution, and then the next step according to the analysis results
+  * Local Force Request - Forced to use the domestic server to resolve: open to 1 / off to 0
+  * NOTE: A description of the combination of Local Hosts, Local Routing, and Local Force Request
+    * By default, the server fails to resolve in the country will be the next step
+    * All parameters are off, directly skip the process of using the domestic server for domain name resolution
+    * Local Hosts can be turned on separately: Will be (black) whitelisted (no) hit the rules of the domain name, (not) use the domestic server to resolve
+    * Local Routing can be opened independently: All requests will be sent to the domestic server for domain name resolution first, and then match according to the routing table. The result of parsing the hit routing table will be directly returned to the requester
+    * Local Force Request can not be enabled separately: need to be used with Local Hosts
+    * Local Hosts + Local Routing can not be enabled at the same time: Function conflict
+    * Local Hosts + Local Force Request can be enabled at the same time: Forcing the domain name that has hit the rule can only be resolved by using the domestic server. If the result of the parsing is incorrect, it will be directly discarded and the entire parsing process will be terminated
+    * Local Routing + Local Force Request can not be enabled at the same time: Function conflict
+    * Local Hosts + Local Routing + Local Force Request can be enabled at the same time: All requests (except those specified in the blacklist) will be sent to the local server for domain name resolution first. According to the nature of the request:
+      * If the domain name of the request hits Local Hosts, the domain name that has been hit must be forcibly resolved using the domestic server. If the result of the parsing is incorrect, the domain name will be directly discarded and the entire parsing process will be terminated
+      * If the requested domain name does not hit Local Hosts match according to the routing table, the result of the hit routing table will be returned directly to the requester
+      * All requests that did not hit and did not successfully match the routing table will proceed to the next step
 
 * Addresses - normal mode address area
   * IPv4 Listen Address - IPv4 local listening address: need to enter a port format with the address, leave it blank
@@ -564,7 +574,7 @@ Base - the basic parameter area
  * TCP Fast Open - TCP Fast Open feature:
     * Support for this feature:
       * Windows platform
-        * On for 1 / off to 0
+        * 1 to enable/0 to disable.
         * Server-side support, the client due to different types of I / O problems temporarily unable to support
         * Requires Windows 10 Version 1607 and later support
       * Linux platform:
@@ -572,7 +582,7 @@ Base - the basic parameter area
         * Full support for server and client
         * IPv4 agreement requires Linux Kernel 3.7 and the latest version of the support, IPv6 agreement requires Linux Kernel 3.16 and the latest version of the kernel support
       * MacOS platform:
-        * On for 1 / off to 0
+        * 1 to enable/0 to disable.
         * Full support for server and client
         * Requires macOS 10.11 Sierra and later versions support
     * Warning: Do not open this feature on an unsupported version, or it may prevent the program from sending or receiving packets normally!
@@ -596,38 +606,33 @@ Base - the basic parameter area
     * The order in which multiple TTL / Hop Limits values ​​are used is the same as the order of addresses in the corresponding address parameters
 
 * Switches - controls the switch area
-  * Domain Case Conversion - random conversion function variable name request case: open to 1 / off to 0
+  * Domain Case Conversion - random conversion function variable name request case: 1 to enable/0 to disable.
   * Compression Pointer Mutation - Randomly add compression index: 1 (+ 2 + 3), close to 0
     * There are three different types of random compression indicators, corresponding to 1 and 2 and 3
     * Can be used alone one, that is, only fill a number, or fill in multiple, the middle of the use of +
     * When you fill in multiple, you will randomly use one of them when you need to randomly add a compression metric, and each request may not be the same
-  * EDNS Label - EDNS tag support, will be added after the request to add EDNS label: all open to 1 / off to 0
+  * EDNS Label - EDNS tag support, will be added after the request to add EDNS label: all 1 to enable/0 to disable.
     * This parameter can be specified only part of the request process using EDNS tags, divided into the specified mode and exclusion mode:
     * Specify the list mode, the process is listed to enable this feature: EDNS Label = Local + SOCKS Proxy + HTTP CONNECT Proxy + Direct Request + DNSCurve + TCP + UDP
     * Exclude list mode, the process listed does not enable this feature: EDNS Label = All - Local - SOCKS Proxy - HTTP CONNECT Proxy - Direct Request - DNSCurve - TCP - UDP
-  * EDNS Client Subnet Relay - EDNS user terminal network forwarding function, after opening will be from non-private network address for all requests to add their request to use the address of the EDNS subnet address: open to 1 / off to 0
+  * EDNS Client Subnet Relay - EDNS user terminal network forwarding function, after opening will be from non-private network address for all requests to add their request to use the address of the EDNS subnet address: 1 to enable/0 to disable.
     * This feature requires the EDNS Label parameter to be enabled
     * The priority of this parameter is higher than that of the IPv4 / IPv6 EDNS Client Subnet Address. Therefore, when the EDNS subnet address needs to be added, the address of this parameter will be added first
-  * DNSSEC Request - DNSSEC request, after opening will try to add DNSSEC request for all requests: open to 1 / off to 0
+  * DNSSEC Request - DNSSEC request, after opening will try to add DNSSEC request for all requests: 1 to enable/0 to disable.
     * This feature requires the EDNS Label parameter to be enabled
     * This feature does not have any ability to verify DNSSEC records, a separate open theory can not avoid the problem of DNS poisoning
-  * DNSSEC Validation - DNSSEC record verification function, will check all the functional variables with DNSSEC record name resolution, verification failure will be discarded: open to 1 / off to 0
-    * This feature requires EDNS Label and DNSSEC Request parameters to be enabled
+  * DNSSEC Force Record - Force DNSSEC record function, will discard all functions without any DNSSEC records: 1 to enable/0 to disable.
+    * This feature requires EDNS Label and DNSSEC Request parameters
     * This function does not have the full DNSSEC record test capability, a separate open theory can not avoid the problem of DNS poisoning
-    * This function does not check the function variable name resolution that does not exist for DNSSEC records
-  * DNSSEC Force Validation - Force DNSSEC record verification function, will discard all functions without DNSSEC record Variable name resolution: On for 1 / off to 0
-    * This feature requires EDNS Label, DNSSEC Request, and DNSSEC Validation parameters
-    * This function does not have the full DNSSEC record test capability, a separate open theory can not avoid the problem of DNS poisoning
-    * Warning: Due to the small number of functional variable names currently deployed DNSSEC, there is no DNSSEC function variable name resolution without DNSSEC records, which will cause all undeployed DNSSEC function variable name resolution failure, do not open this function at this stage!
+    * Warning: Due to the small number of functional variable names currently deployed DNSSEC, there is no DNSSEC function variable name resolution without DNSSEC records, which will cause all undeployed DNSSEC function variable name resolution failure!
   * Alternate Multiple Request - The standby server requests parameters at the same time, and requests the server that responds to the primary and standby servers at the same time with the fastest response: On 1 / Off is 0
     * This request is enforced when multiple requests are enabled by the multi-server, and all servers that are present in the manifest are requested at the same time and the results of the fastest response server are used
-  * IPv4 Do Not Fragment - IPv4 packet header Do Not Fragment flag: On 1 / off is 0
+  * IPv4 Do Not Fragment - IPv4 packet header Do Not Fragment flag: 1 to enable/0 to disable.
     * This feature does not support the macOS platform, this platform will directly ignore this parameter
-  * IPv4 Data Filter - IPv4 header detection: On 1 / off is 0
-  * TCP Data Filter - TCP packet header detection: On for 1 / off to 0
-  * DNS Data Filter - DNS header detection: On to 1 / off to 0
-  * Blacklist Filter - Resolve the results of the blacklist filter: open to 1 / off to 0
-  * Strict Resource Record TTL Filter - Strict resource record retention time filtering, the standard requires the same name and type of resource records must have the same retention time: open for 1 / off to 0
+  * TCP Data Filter - TCP packet header detection: 1 to enable/0 to disable.
+  * DNS Data Filter - DNS header detection: 1 to enable/0 to disable.
+  * Blacklist Filter - Resolve the results of the blacklist filter: 1 to enable/0 to disable.
+  * Resource Record Set TTL Filter - RFC 2181 clarifications to the DNS specification, restrict TTL values of RRSet: 1 to enable/0 to disable.
 
 * Data - data area
   * ICMP ID - ICMP / Ping packet header ID: hexadecimal character in the format 0x ****, if left blank, the thread ID of the thread is used as the request id
@@ -639,7 +644,7 @@ Base - the basic parameter area
   * Local Machine Server Name - Local DNS Server Name: Enter the correct function variable name and do not exceed 253 bytes of ASCII data, leaving pcap-dnsproxy.server as the local server name
 
 * Proxy - proxy area
-  * SOCKS Proxy - SOCKS protocol master switch, control all options related to the SOCKS protocol: on for 1 / off to 0
+  * SOCKS Proxy - SOCKS protocol master switch, control all options related to the SOCKS protocol: 1 to enable/0 to disable.
   * SOCKS Version - Version used by the SOCKS Agreement: Fill in 4 or 4A or 5
     * SOCKS version 4 does not support IPv6 address and function variable name of the target server, and does not support UDP forwarding function
     * SOCKS version 4a does not support IPv6 address of the target server, and does not support UDP forwarding function
@@ -648,10 +653,10 @@ Base - the basic parameter area
     * When you fill in both IPv4 and IPv6 or do not fill in any network layer agreements, the program will automatically select the protocol to be used according to the web environment
     * Both TCP and UDP are filled with only UDP because TCP is the first support for SOCKS and the most commonly supported standard network layer protocol, so TCP requests are used even when a UDP request fails
     * Fill in Force UDP to prevent UDP requests from failing to use TCP to retry requests
-  * SOCKS UDP No Handshake - SOCKS UDP does not shake hands mode, will not open after the TCP handshake directly send UDP forwarding request: open to 1 / off to 0
+  * SOCKS UDP No Handshake - SOCKS UDP does not shake hands mode, will not open after the TCP handshake directly send UDP forwarding request: 1 to enable/0 to disable.
     * The standard flow of the SOCKS protocol must use the TCP connection to exchange handshaking information before using the UDP forwarding function. Otherwise, the SOCKS server will discard the forwarding request
     * Part of the SOCKS local proxy can be directly UDP forwarding without the use of TCP connection exchange handshake information, please be sure to confirm the SOCKS server support before
-  * SOCKS Proxy Only - Only use the SOCKS protocol proxy mode, all requests will only be made via the SOCKS protocol: On 1 / off is 0
+  * SOCKS Proxy Only - Only use the SOCKS protocol proxy mode, all requests will only be made via the SOCKS protocol: 1 to enable/0 to disable.
   * SOCKS IPv4 Address - SOCKS protocol IPv4 primary SOCKS server address: need to enter a port format with the address
     * Does not support multiple addresses, can only fill a single address
     * Support the use of service name instead of port number
@@ -663,11 +668,11 @@ Base - the basic parameter area
     * Support the use of service name instead of port number
   * SOCKS Username - User name used when connecting to SOCKS server: maximum length of 255 characters, blank
   * SOCKS Password - the password used to connect to the SOCKS server: up to 255 characters, leave it blank
-  * HTTP CONNECT Proxy - HTTP CONNECT protocol master switch, control all options related to the HTTP CONNECT protocol: on for 1 / off to 0
+  * HTTP CONNECT Proxy - HTTP CONNECT protocol master switch, control all options related to the HTTP CONNECT protocol: 1 to enable/0 to disable.
   * HTTP CONNECT Protocol - the protocol used when using the HTTP CONNECT protocol request: can be filled with IPv4 and IPv6
     * Fill in the agreement can be arbitrarily combined, only to fill IPv4 or IPv6, only use the specified agreement to the HTTP CONNECT server request
     * When you fill in both IPv4 and IPv6 or do not fill in any network layer agreements, the program will automatically select the protocol to be used according to the web environment
-  * HTTP CONNECT Proxy Only - Only use the HTTP CONNECT protocol proxy mode, all requests will be made only via the HTTP CONNECT protocol: On 1 / Off to 0
+  * HTTP CONNECT Proxy Only - Only use the HTTP CONNECT protocol proxy mode, all requests will be made only via the HTTP CONNECT protocol: 1 to enable/0 to disable.
   * HTTP CONNECT IPv4 Address - HTTP CONNECT protocol IPv4 Primary HTTP CONNECT server address: need to enter a port format with the address
     * Does not support multiple addresses, can only fill a single address
     * Support the use of service name instead of port number
@@ -677,16 +682,16 @@ Base - the basic parameter area
   * HTTP CONNECT Target Server - HTTP CONNECT The final destination server: you need to enter a port format IPv4 / IPv6 address or function variable name
     * Does not support multiple address or function variable names, can only fill in a single address or function variable name
     * Support the use of service name instead of port number
-  * HTTP CONNECT TLS Handshake - HTTP CONNECT Agreement TLS Handshake and Encrypted Transfer Master Switch: On 1 / Off to 0
+  * HTTP CONNECT TLS Handshake - HTTP CONNECT Agreement TLS Handshake and Encrypted Transfer Master Switch: 1 to enable/0 to disable.
   * HTTP CONNECT TLS Version - HTTP CONNECT protocol Enable TLS Handshake and Encrypted Transmission Specified version used: Set to 0 to automatically select
     * At this stage can be filled with 1.0 or 1.1 or 1.2
     * Windows XP / 2003 and Windows Vista do not support versions higher than 1.0
     * OpenSSL 1.0.0 and previous versions do not support versions higher than 1.0
-  * HTTP CONNECT TLS Validation - HTTP CONNECT protocol When TLS handshaking is enabled Server certificate chain check: On 1 / off is 0
+  * HTTP CONNECT TLS Validation - HTTP CONNECT protocol When TLS handshaking is enabled Server certificate chain check: 1 to enable/0 to disable.
     * Warning: Turn off this feature will likely cause the encrypted connection to be attacked by the middleman, strongly recommended to open!
     * Warning: OpenSSL 1.0.2 previous version does not support check the server certificate function variable name match, please pay attention!
   * HTTP CONNECT TLS Server Name Indication - HTTP CONNECT The function used to specify the TLS handshake. Variable Name Server: Please enter the correct function variable name and do not exceed 253 bytes ASCII data, leave it blank Features
-  * HTTP CONNECT TLS ALPN - HTTP CONNECT Agreement Whether to enable Application-Layer Protocol Negotiation / ALPN extension when TLS handshaking: On is 1 / off is 0
+  * HTTP CONNECT TLS ALPN - HTTP CONNECT Agreement Whether to enable Application-Layer Protocol Negotiation / ALPN extension when TLS handshaking: 1 to enable/0 to disable.
     * This feature is not supported on Windows 8 and earlier
     * OpenSSL 1.0.1 and previous versions do not support this feature
     * Warning: Do not open this feature on an unsupported version, or it may prevent the program from sending or receiving packets normally!
@@ -707,7 +712,7 @@ Base - the basic parameter area
     * Only Base mode authentication is supported
 
 * DNSCurve - DNSCurve Agreement Basic Parameter Area
-  * DNSCurve - DNSCurve protocol master switch that controls all options related to the DNSCurve protocol: On for 1 / off to 0
+  * DNSCurve - DNSCurve protocol master switch that controls all options related to the DNSCurve protocol: 1 to enable/0 to disable.
   * DNSCurve Protocol - the protocol used to send the request using the DNSCurve protocol: can be filled with IPv4 and IPv6 and TCP and UDP
     * Fill in the agreement can be arbitrarily combined, only fill IPv4 or IPv6 with UDP or TCP, only use the specified agreement to the remote DNS server to issue a request
     * When you fill in both IPv4 and IPv6 or do not fill in any network layer agreements, the program will automatically select the protocol to be used according to the web environment
@@ -715,14 +720,14 @@ Base - the basic parameter area
     * Fill in Force TCP to prevent TCP requests from failing to use UDP to retry requests
   * DNSCurve Payload Size - The maximum payload length that is included with the DNSCurve tag, as well as the total length of the request sent and the requested fill length: in bytes
     * Minimum for the DNS protocol to achieve the requirements of 512, leaving 512
-    * Maximum of 1500 minus the DNSCurve header length, it is recommended not to exceed 1220
+    * Maximum of Ethernet MTU minus the DNSCurve header length, it is recommended not to exceed 1220
     * The DNSCurve protocol requires this value to be a multiple of 64
   * DNSCurve Reliable Socket Timeout - Reliable DNSCurve Protocol Port Timeout, Reliable Port TCP Protocol: in milliseconds, minimum to 500, can be left blank, leave space for 3000
   * DNSCurve Unreliable Socket Timeout - unreliable DNSCurve protocol port timeout time, unreliable port refers to the UDP protocol: in milliseconds, the minimum is 500, can be left blank, leave the time for the 2000
-  * DNSCurve Encryption - Enable encryption, DNSCurve protocol supports both encrypted and unencrypted modes: On for 1 / off to 0
-  * DNSCurve Encryption Only - only use encryption mode, all requests will only be through DNCurve encryption mode: open to 1 / off to 0
+  * DNSCurve Encryption - Enable encryption, DNSCurve protocol supports both encrypted and unencrypted modes: 1 to enable/0 to disable.
+  * DNSCurve Encryption Only - only use encryption mode, all requests will only be through DNCurve encryption mode: 1 to enable/0 to disable.
     * Note: Use "Only use encryption mode" must provide the server's magic number and fingerprints for request and reception
-  * DNSCurve Client Ephemeral Key - One-off client key group mode, each request resolution using a randomly generated one-time client key group, providing forward security: On for 1 / off to 0
+  * DNSCurve Client Ephemeral Key - One-off client key group mode, each request resolution using a randomly generated one-time client key group, providing forward security: 1 to enable/0 to disable.
   * DNSCurve Key Recheck Time - DNSCurve Agreement DNS Server Connection Information Check Interval: In seconds, Min 10
 
 * DNSCurve Database - DNSCurve Agreement Database area
@@ -783,6 +788,7 @@ Base - the basic parameter area
   * Note: The Magic Number parameter is also supported with ASCII characters or hexadecimal strings
     * Can be filled directly to print ASCII string can be
     * Hexadecimal string need to precede the string with 0x (case sensitive)
+
 
 -------------------------------------------------------------------------------
 
@@ -968,6 +974,7 @@ Valid parameter format is "regular expression" (without quotation marks)
 
     Server = // 127.0.0.1
 
+
 -------------------------------------------------------------------------------
 
 
@@ -1001,6 +1008,7 @@ Valid parameter format is "Address block / network prefix length" (without quota
 
 * Stop - temporarily stop reading the label
   * For more information, see the introduction to this function
+
 
 -------------------------------------------------------------------------------
 
@@ -1038,10 +1046,9 @@ Auto-refresh support profile list:
 * Multiple Request Times
 * Domain Case Conversion
 * IPv4 Do Not Fragment
-* IPv4 Data Filter
 * TCP Data Filter
 * DNS Data Filter
-* Strict Resource Record TTL Filter
+* Resource Record Set TTL Filter
 * Domain Test Protocol
 * SOCKS Target Server
 * SOCKS Username

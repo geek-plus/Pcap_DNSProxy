@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -29,10 +29,10 @@ bool PrintError(
 	const size_t Line)
 {
 //Print log level check, parameter check, message check and file name check
-	if (Parameter.PrintLogLevel == LOG_LEVEL_TYPE::LEVEL_0 || ErrorLevel > Parameter.PrintLogLevel || Message == nullptr)
+	if (Parameter.PrintLogLevel == LOG_LEVEL_TYPE::LEVEL_0 || Message == nullptr || ErrorLevel > Parameter.PrintLogLevel)
 		return false;
 	std::wstring ErrorMessage(Message);
-	if (ErrorMessage.empty())
+	if (ErrorMessage.size() < ERROR_MESSAGE_MINSIZE)
 		return false;
 	else 
 		ErrorMessage.clear();
@@ -61,7 +61,7 @@ bool PrintError(
 			FileNameString.append(L"(Line %u)");
 	}
 
-//Add log error type.
+//Log type
 	switch (ErrorType)
 	{
 	//Message Notice
@@ -109,6 +109,7 @@ bool PrintError(
 		//There are no any error codes or file names to be reported in LOG_ERROR_TYPE::PCAP.
 			ErrorMessage.append(L"[Pcap Error] ");
 			ErrorMessage.append(Message);
+			ErrorMessage.append(L"\n");
 
 			return WriteMessage_ScreenFile(ErrorMessage, ErrorCode, Line);
 		}break;
@@ -164,22 +165,33 @@ bool WriteMessage_ScreenFile(
 	const size_t Line)
 {
 //Get current date and time.
-	tm TimeStructure;
-	memset(&TimeStructure, 0, sizeof(TimeStructure));
-	const auto TimeValues = time(nullptr);
+	tm CurrentTimeStructure;
+	memset(&CurrentTimeStructure, 0, sizeof(CurrentTimeStructure));
+	const auto CurrentTimeValue = time(nullptr);
 #if defined(PLATFORM_WIN)
-	if (TimeValues <= 0 || localtime_s(&TimeStructure, &TimeValues) != 0)
+	if (CurrentTimeValue <= 0 || localtime_s(&CurrentTimeStructure, &CurrentTimeValue) != 0)
 #elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
-	if (TimeValues <= 0 || localtime_r(&TimeValues, &TimeStructure) == nullptr)
+	if (CurrentTimeValue <= 0 || localtime_r(&CurrentTimeValue, &CurrentTimeStructure) == nullptr)
 #endif
 		return false;
 
 //Print startup time at first printing.
-	time_t LogStartupTime = 0;
+	time_t LogStartupTimeValue = 0;
+	tm LogStartupTimeStructure;
+	memset(&LogStartupTimeStructure, 0, sizeof(LogStartupTimeStructure));
 	if (GlobalRunningStatus.StartupTime > 0)
 	{
-		LogStartupTime = GlobalRunningStatus.StartupTime;
+	//Copy startup time and reset global value.
+		LogStartupTimeValue = GlobalRunningStatus.StartupTime;
 		GlobalRunningStatus.StartupTime = 0;
+
+	//Get log startup time.
+	#if defined(PLATFORM_WIN)
+		if (localtime_s(&LogStartupTimeStructure, &LogStartupTimeValue) != 0)
+	#elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
+		if (localtime_r(&LogStartupTimeValue, &LogStartupTimeStructure) == nullptr)
+	#endif
+			return false;
 	}
 
 //Print to screen.
@@ -190,26 +202,26 @@ bool WriteMessage_ScreenFile(
 #endif
 	{
 	//Print startup time.
-		if (LogStartupTime > 0)
+		if (LogStartupTimeValue > 0)
 		{
 			PrintToScreen(true, L"[%d-%02d-%02d %02d:%02d:%02d] -> [Notice] Pcap_DNSProxy started.\n", 
-				TimeStructure.tm_year + 1900, 
-				TimeStructure.tm_mon + 1, 
-				TimeStructure.tm_mday, 
-				TimeStructure.tm_hour, 
-				TimeStructure.tm_min, 
-				TimeStructure.tm_sec);
+				LogStartupTimeStructure.tm_year + 1900, 
+				LogStartupTimeStructure.tm_mon + 1, 
+				LogStartupTimeStructure.tm_mday, 
+				LogStartupTimeStructure.tm_hour, 
+				LogStartupTimeStructure.tm_min, 
+				LogStartupTimeStructure.tm_sec);
 		}
 
 	//Print message.
 		std::lock_guard<std::mutex> ScreenMutex(ScreenLock);
 		PrintToScreen(false, L"[%d-%02d-%02d %02d:%02d:%02d] -> ", 
-			TimeStructure.tm_year + 1900, 
-			TimeStructure.tm_mon + 1, 
-			TimeStructure.tm_mday, 
-			TimeStructure.tm_hour, 
-			TimeStructure.tm_min, 
-			TimeStructure.tm_sec);
+			CurrentTimeStructure.tm_year + 1900, 
+			CurrentTimeStructure.tm_mon + 1, 
+			CurrentTimeStructure.tm_mday, 
+			CurrentTimeStructure.tm_hour, 
+			CurrentTimeStructure.tm_min, 
+			CurrentTimeStructure.tm_sec);
 		if (Line > 0 && ErrorCode != 0)
 			PrintToScreen(false, Message.c_str(), ErrorCode, Line);
 		else if (Line > 0)
@@ -267,37 +279,37 @@ bool WriteMessage_ScreenFile(
 #endif
 	{
 	//Print startup time.
-		if (LogStartupTime > 0)
+		if (LogStartupTimeValue > 0)
 		{
 			fwprintf_s(FileHandle, L"[%d-%02d-%02d %02d:%02d:%02d] -> [Notice] Pcap_DNSProxy started.\n", 
-				TimeStructure.tm_year + 1900, 
-				TimeStructure.tm_mon + 1, 
-				TimeStructure.tm_mday, 
-				TimeStructure.tm_hour, 
-				TimeStructure.tm_min, 
-				TimeStructure.tm_sec);
+				LogStartupTimeStructure.tm_year + 1900, 
+				LogStartupTimeStructure.tm_mon + 1, 
+				LogStartupTimeStructure.tm_mday, 
+				LogStartupTimeStructure.tm_hour, 
+				LogStartupTimeStructure.tm_min, 
+				LogStartupTimeStructure.tm_sec);
 		}
 
 	//Print old file removed message.
 		if (IsFileDeleted)
 		{
 			fwprintf_s(FileHandle, L"[%d-%02d-%02d %02d:%02d:%02d] -> [Notice] Old log file was removed.\n", 
-				TimeStructure.tm_year + 1900, 
-				TimeStructure.tm_mon + 1, 
-				TimeStructure.tm_mday, 
-				TimeStructure.tm_hour, 
-				TimeStructure.tm_min, 
-				TimeStructure.tm_sec);
+				CurrentTimeStructure.tm_year + 1900, 
+				CurrentTimeStructure.tm_mon + 1, 
+				CurrentTimeStructure.tm_mday, 
+				CurrentTimeStructure.tm_hour, 
+				CurrentTimeStructure.tm_min, 
+				CurrentTimeStructure.tm_sec);
 		}
 
 	//Print main message.
 		fwprintf_s(FileHandle, L"[%d-%02d-%02d %02d:%02d:%02d] -> ", 
-			TimeStructure.tm_year + 1900, 
-			TimeStructure.tm_mon + 1, 
-			TimeStructure.tm_mday, 
-			TimeStructure.tm_hour, 
-			TimeStructure.tm_min, 
-			TimeStructure.tm_sec);
+			CurrentTimeStructure.tm_year + 1900, 
+			CurrentTimeStructure.tm_mon + 1, 
+			CurrentTimeStructure.tm_mday, 
+			CurrentTimeStructure.tm_hour, 
+			CurrentTimeStructure.tm_min, 
+			CurrentTimeStructure.tm_sec);
 		if (Line > 0 && ErrorCode != 0)
 			fwprintf_s(FileHandle, Message.c_str(), ErrorCode, Line);
 		else if (Line > 0)
@@ -469,59 +481,59 @@ void HTTP_CONNECT_2_PrintLog(
 {
 	switch (ErrorCode)
 	{
-		case HTTP2_ERROR_NO_ERROR:
+		case HTTP_2_ERROR_NO_ERROR:
 		{
 			Message.append(L": NO_ERROR");
 		}break;
-		case HTTP2_ERROR_PROTOCOL_ERROR:
+		case HTTP_2_ERROR_PROTOCOL_ERROR:
 		{
 			Message.append(L": PROTOCOL_ERROR");
 		}break;
-		case HTTP2_ERROR_INTERNAL_ERROR:
+		case HTTP_2_ERROR_INTERNAL_ERROR:
 		{
 			Message.append(L": INTERNAL_ERROR");
 		}break;
-		case HTTP2_ERROR_FLOW_CONTROL_ERROR:
+		case HTTP_2_ERROR_FLOW_CONTROL_ERROR:
 		{
 			Message.append(L": FLOW_CONTROL_ERROR");
 		}break;
-		case HTTP2_ERROR_SETTINGS_TIMEOUT:
+		case HTTP_2_ERROR_SETTINGS_TIMEOUT:
 		{
 			Message.append(L": SETTINGS_TIMEOUT");
 		}break;
-		case HTTP2_ERROR_STREAM_CLOSED:
+		case HTTP_2_ERROR_STREAM_CLOSED:
 		{
 			Message.append(L": STREAM_CLOSED");
 		}break;
-		case HTTP2_ERROR_FRAME_SIZE_ERROR:
+		case HTTP_2_ERROR_FRAME_SIZE_ERROR:
 		{
 			Message.append(L": FRAME_SIZE_ERROR");
 		}break;
-		case HTTP2_ERROR_REFUSED_STREAM:
+		case HTTP_2_ERROR_REFUSED_STREAM:
 		{
 			Message.append(L": REFUSED_STREAM");
 		}break;
-		case HTTP2_ERROR_CANCEL:
+		case HTTP_2_ERROR_CANCEL:
 		{
 			Message.append(L": CANCEL");
 		}break;
-		case HTTP2_ERROR_COMPRESSION_ERROR:
+		case HTTP_2_ERROR_COMPRESSION_ERROR:
 		{
 			Message.append(L": COMPRESSION_ERROR");
 		}break;
-		case HTTP2_ERROR_CONNECT_ERROR:
+		case HTTP_2_ERROR_CONNECT_ERROR:
 		{
 			Message.append(L": CONNECT_ERROR");
 		}break;
-		case HTTP2_ERROR_ENHANCE_YOUR_CALM:
+		case HTTP_2_ERROR_ENHANCE_YOUR_CALM:
 		{
 			Message.append(L": ENHANCE_YOUR_CALM");
 		}break;
-		case HTTP2_ERROR_INADEQUATE_SECURITY:
+		case HTTP_2_ERROR_INADEQUATE_SECURITY:
 		{
 			Message.append(L": INADEQUATE_SECURITY");
 		}break;
-		case HTTP2_ERROR_HTTP_1_1_REQUIRED:
+		case HTTP_2_ERROR_HTTP_1_1_REQUIRED:
 		{
 			Message.append(L": HTTP_1_1_REQUIRED");
 		}break;

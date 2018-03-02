@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -41,7 +41,8 @@ std::deque<SOCKET_MARKING_DATA> SocketMarkingList;
 std::deque<OUTPUT_PACKET_TABLE> OutputPacketList;
 std::mutex CaptureLock, OutputPacketListLock;
 #endif
-std::deque<DNS_CACHE_DATA> DNSCacheList;
+std::list<DNS_CACHE_DATA> DNSCacheList;
+std::unordered_multimap<std::string, std::list<DNS_CACHE_DATA>::iterator> DNSCacheIndexList;
 std::mutex ScreenLock, LocalAddressLock[NETWORK_LAYER_PARTNUM], SocketMarkingLock, DNSCacheListLock, IPFilterFileLock, HostsFileLock;
 
 //Functions

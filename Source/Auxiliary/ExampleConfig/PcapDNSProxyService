@@ -12,7 +12,7 @@
 # 
 # This code is part of Pcap_DNSProxy
 # Pcap_DNSProxy, a local DNS server base on WinPcap and LibPcap
-# Copyright (C) 2012-2017 Chengr28
+# Copyright (C) 2012-2018 Chengr28
 # 
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -40,6 +40,7 @@ STOP_FLAGS="--stop --chuid root --exec"
 case "$1" in
 start)
 	echo "Start Pcap_DNSProxy service."
+	ulimit -n 10240
 	$PROGRAM $START_FLAGS $PATH/$NAME --chdir $PATH
 ;;
 stop)
@@ -49,6 +50,7 @@ stop)
 force-reload|restart)
 	echo "Force-reload/Restart Pcap_DNSProxy service."
 	$PROGRAM $STOP_FLAGS $PATH/$NAME
+	ulimit -n 10240
 	$PROGRAM $START_FLAGS $PATH/$NAME --chdir $PATH
 ;;
 status)

@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -44,7 +44,10 @@ typedef enum class _label_hosts_type_
 	SOURCE
 }LABEL_HOSTS_TYPE;
 
-//Length definitions
+//Size and length definitions
+#define BOM_UTF_16_LENGTH                     2U 
+#define BOM_UTF_32_LENGTH                     4U
+#define BOM_UTF_8_LENGTH                      3U
 #define READ_DATA_MINSIZE                     4U
 #define READ_TEXT_MINSIZE                     2U
 #define READ_PARAMETER_MINSIZE                8U

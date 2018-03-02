@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -26,8 +26,8 @@
 //Global variables
 extern CONFIGURATION_TABLE Parameter;
 #if (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
-static unsigned char HTTP1_ALPN_Vector[] = HTTP1_TLS_ALPN_STRING;
-static unsigned char HTTP2_ALPN_Vector[] = HTTP2_TLS_ALPN_STRING;
+static unsigned char HTTP_1_ALPN_List[] = HTTP_1_TLS_ALPN_STRING;
+static unsigned char HTTP_2_ALPN_List[] = HTTP_2_TLS_ALPN_STRING;
 #endif
 
 #if defined(PLATFORM_WIN)

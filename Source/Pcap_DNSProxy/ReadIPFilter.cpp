@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -217,7 +217,7 @@ bool ReadBlacklistData(
 	std::vector<std::string> ListData;
 	GetParameterListData(ListData, Data, 0, Separated, ASCII_VERTICAL, false, false);
 	ssize_t Result = 0;
-	uint16_t BeforeType = 0;
+	uint16_t PreviousType = 0;
 
 //Mark all data in list.
 	for (const auto &StringIter:ListData)
@@ -226,11 +226,11 @@ bool ReadBlacklistData(
 		if (StringIter.find(ASCII_COLON) != std::string::npos)
 		{
 		//Before type check
-			if (BeforeType == 0)
+			if (PreviousType == 0)
 			{
-				BeforeType = AF_INET6;
+				PreviousType = AF_INET6;
 			}
-			else if (BeforeType != AF_INET6)
+			else if (PreviousType != AF_INET6)
 			{
 				PrintError(LOG_LEVEL_TYPE::LEVEL_1, LOG_ERROR_TYPE::IPFILTER, L"Data format error", 0, FileList_IPFilter.at(FileIndex).FileName.c_str(), Line);
 				return false;
@@ -288,16 +288,16 @@ bool ReadBlacklistData(
 					return false;
 				}
 
-			//Check repeating items.
+			//Check repeat items.
 				if (CheckSpecialAddress(AF_INET6, &reinterpret_cast<sockaddr_in6 *>(&AddressRangeTableTemp.Begin)->sin6_addr, false, nullptr))
 				{
-					PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::IPFILTER, L"Repeating items error, this item is not available", 0, FileList_IPFilter.at(FileIndex).FileName.c_str(), Line);
+					PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::IPFILTER, L"Repeat item error, this item will disabled", 0, FileList_IPFilter.at(FileIndex).FileName.c_str(), Line);
 					return false;
 				}
 
 				AddressRangeTableTemp.Begin.ss_family = AF_INET6;
 				AddressRangeTableTemp.End.ss_family = AF_INET6;
-				(reinterpret_cast<sockaddr_in6 *>(&AddressRangeTableTemp.End))->sin6_addr = (reinterpret_cast<sockaddr_in6 *>(&AddressRangeTableTemp.Begin))->sin6_addr;
+				reinterpret_cast<sockaddr_in6 *>(&AddressRangeTableTemp.End)->sin6_addr = reinterpret_cast<sockaddr_in6 *>(&AddressRangeTableTemp.Begin)->sin6_addr;
 			}
 
 			ResultBlacklistTableTemp.Addresses.push_back(AddressRangeTableTemp);
@@ -307,11 +307,11 @@ bool ReadBlacklistData(
 		else if (StringIter.find(ASCII_PERIOD) != std::string::npos)
 		{
 		//Before type check
-			if (BeforeType == 0)
+			if (PreviousType == 0)
 			{
-				BeforeType = AF_INET;
+				PreviousType = AF_INET;
 			}
-			else if (BeforeType != AF_INET)
+			else if (PreviousType != AF_INET)
 			{
 				PrintError(LOG_LEVEL_TYPE::LEVEL_1, LOG_ERROR_TYPE::IPFILTER, L"Data format error", 0, FileList_IPFilter.at(FileIndex).FileName.c_str(), Line);
 				return false;
@@ -369,16 +369,16 @@ bool ReadBlacklistData(
 					return false;
 				}
 
-			//Check repeating items.
+			//Check repeat items.
 				if (CheckSpecialAddress(AF_INET, &reinterpret_cast<sockaddr_in *>(&AddressRangeTableTemp.Begin)->sin_addr, false, nullptr))
 				{
-					PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::IPFILTER, L"Repeating items error, this item is not available", 0, FileList_IPFilter.at(FileIndex).FileName.c_str(), Line);
+					PrintError(LOG_LEVEL_TYPE::LEVEL_2, LOG_ERROR_TYPE::IPFILTER, L"Repeat item error, this item will disabled", 0, FileList_IPFilter.at(FileIndex).FileName.c_str(), Line);
 					return false;
 				}
 
 				AddressRangeTableTemp.Begin.ss_family = AF_INET;
 				AddressRangeTableTemp.End.ss_family = AF_INET;
-				(reinterpret_cast<sockaddr_in *>(&AddressRangeTableTemp.End))->sin_addr = (reinterpret_cast<sockaddr_in *>(&AddressRangeTableTemp.Begin))->sin_addr;
+				reinterpret_cast<sockaddr_in *>(&AddressRangeTableTemp.End)->sin_addr = reinterpret_cast<sockaddr_in *>(&AddressRangeTableTemp.Begin)->sin_addr;
 			}
 
 			ResultBlacklistTableTemp.Addresses.push_back(AddressRangeTableTemp);
@@ -482,7 +482,7 @@ bool ReadLocalRoutingData(
 		}
 
 	//IPv6 mark to global list.
-		std::set<uint64_t> AddrBackSet;
+		std::unordered_set<uint64_t> AddrBackSet;
 		for (auto &IPFilterFileSetIter:*IPFilterFileSetModificating)
 		{
 			if (IPFilterFileSetIter.FileIndex == FileIndex)
@@ -499,7 +499,7 @@ bool ReadLocalRoutingData(
 						const auto AddressRoutingListIter = LocalRoutingTableIter.AddressRoutingList_IPv6.find(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS / 2U - AddressRoutingTableTemp.Prefix)));
 						if (AddressRoutingListIter != LocalRoutingTableIter.AddressRoutingList_IPv6.end())
 						{
-							if (AddressRoutingListIter->second.count(hton64(*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix))) == 0)
+							if (AddressRoutingListIter->second.find(hton64(*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix))) == AddressRoutingListIter->second.end())
 								AddressRoutingListIter->second.insert(hton64(*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix)));
 						}
 						else {
@@ -507,11 +507,11 @@ bool ReadLocalRoutingData(
 							if (AddressRoutingTableTemp.Prefix < sizeof(in6_addr) * BYTES_TO_BITS / 2U)
 							{
 								AddrBackSet.insert(0);
-								LocalRoutingTableIter.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS / 2U - AddressRoutingTableTemp.Prefix)), AddrBackSet));
+								LocalRoutingTableIter.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::unordered_set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS / 2U - AddressRoutingTableTemp.Prefix)), AddrBackSet));
 							}
 							else {
 								AddrBackSet.insert(hton64(*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix)));
-								LocalRoutingTableIter.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)), AddrBackSet));
+								LocalRoutingTableIter.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::unordered_set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)), AddrBackSet));
 							}
 						}
 
@@ -525,11 +525,11 @@ bool ReadLocalRoutingData(
 				if (AddressRoutingTableTemp.Prefix < sizeof(in6_addr) * BYTES_TO_BITS / 2U)
 				{
 					AddrBackSet.insert(0);
-					AddressRoutingTableTemp.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS / 2U - AddressRoutingTableTemp.Prefix)), AddrBackSet));
+					AddressRoutingTableTemp.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::unordered_set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS / 2U - AddressRoutingTableTemp.Prefix)), AddrBackSet));
 				}
 				else {
 					AddrBackSet.insert(hton64(*reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(&BinaryAddr) + sizeof(in6_addr) / 2U)) & (UINT64_MAX << (sizeof(in6_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix)));
-					AddressRoutingTableTemp.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)), AddrBackSet));
+					AddressRoutingTableTemp.AddressRoutingList_IPv6.insert(std::pair<uint64_t, std::unordered_set<uint64_t>>(hton64(*reinterpret_cast<uint64_t *>(&BinaryAddr)), AddrBackSet));
 				}
 				IPFilterFileSetIter.LocalRoutingList.push_back(AddressRoutingTableTemp);
 				break;
@@ -575,7 +575,7 @@ bool ReadLocalRoutingData(
 				{
 					if (LocalRoutingTableIter.Prefix == AddressRoutingTableTemp.Prefix)
 					{
-						if (LocalRoutingTableIter.AddressRoutingList_IPv4.count(htonl(BinaryAddr.s_addr) & (UINT32_MAX << (sizeof(in_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix))) == 0)
+						if (LocalRoutingTableIter.AddressRoutingList_IPv4.find(htonl(BinaryAddr.s_addr) & (UINT32_MAX << (sizeof(in_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix))) == LocalRoutingTableIter.AddressRoutingList_IPv4.end())
 							LocalRoutingTableIter.AddressRoutingList_IPv4.insert(htonl(BinaryAddr.s_addr) & (UINT32_MAX << (sizeof(in_addr) * BYTES_TO_BITS - AddressRoutingTableTemp.Prefix)));
 
 						return true;
@@ -685,7 +685,7 @@ bool ReadAddressPrefixBlock(
 			AddressPrefix->second = UnsignedResult;
 
 		//Mark prefix block.
-			(reinterpret_cast<sockaddr_in *>(&AddressPrefix->first))->sin_addr.s_addr = htonl(ntohl((reinterpret_cast<sockaddr_in *>(&AddressPrefix->first))->sin_addr.s_addr) & (UINT32_MAX << (sizeof(in_addr) * BYTES_TO_BITS - AddressPrefix->second)));
+			reinterpret_cast<sockaddr_in *>(&AddressPrefix->first)->sin_addr.s_addr = htonl(ntohl(reinterpret_cast<sockaddr_in *>(&AddressPrefix->first)->sin_addr.s_addr) & (UINT32_MAX << (sizeof(in_addr) * BYTES_TO_BITS - AddressPrefix->second)));
 		}
 
 		AddressPrefix->first.ss_family = AF_INET;

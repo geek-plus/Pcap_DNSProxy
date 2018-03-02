@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -58,12 +58,26 @@ bool CaptureNetworkLayer(
 	const uint8_t * const Buffer, 
 	const size_t Length, 
 	const size_t BufferSize);
+ssize_t CaptureCheck_Fragment(
+	const uint16_t Protocol, 
+	const uint8_t * const Buffer, 
+	const size_t Length, 
+	bool &IsNeedTruncated);
 bool CaptureCheck_ICMP(
 	const uint16_t Protocol, 
 	const uint8_t * const Buffer, 
 	const size_t Length);
 bool CaptureCheck_TCP(
 	const uint8_t * const Buffer);
+bool CaptureCheck_DNS(
+	const uint8_t * const Buffer, 
+	bool &IsMarkStatus);
+bool CaptureCheck_PacketStatus(
+	const uint8_t * const Buffer, 
+	const size_t DNS_DataOffset, 
+	const uint16_t Protocol, 
+	const bool IsMarkStatus, 
+	DNS_SERVER_DATA * const PacketSource);
 bool MatchPortToSend(
 	const uint16_t Protocol, 
 	const uint8_t * const Buffer, 

@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -63,6 +63,7 @@ bool SortCompare_IPFilter(
 bool SortCompare_Hosts(
 	const DIFFERNET_FILE_SET_HOSTS &Begin, 
 	const DIFFERNET_FILE_SET_HOSTS &End);
+#if !defined(ENABLE_LIBSODIUM)
 size_t Base64_Encode(
 	uint8_t * const Input, 
 	const size_t Length, 
@@ -73,6 +74,7 @@ size_t Base64_Decode(
 	const size_t Length, 
 	uint8_t *Output, 
 	const size_t OutputSize);
+#endif
 HUFFMAN_RETURN_TYPE HPACK_HuffmanEncoding(
 	uint8_t *String, 
 	size_t ByteSize, 
@@ -135,7 +137,7 @@ void DNSCurveSocketPrecomputation(
 	uint8_t ** const Alternate_PrecomputationKey, 
 	DNSCURVE_SERVER_DATA ** const PacketTarget, 
 	std::vector<SOCKET_DATA> &SocketDataList, 
-	std::vector<DNSCURVE_SOCKET_SELECTING_TABLE> &SocketSelectingList, 
+	std::vector<DNSCURVE_SOCKET_SELECTING_TABLE> &SocketSelectingDataList, 
 	std::unique_ptr<uint8_t[]> &SendBuffer, 
 	size_t &DataLength, 
 	std::unique_ptr<uint8_t[]> &Alternate_SendBuffer, 
@@ -193,7 +195,7 @@ void MonitorLauncher(
 	void);
 bool MonitorInit(
 	void);
-bool TCP_ReceiveProcess(
+bool TCP_AcceptProcess(
 	MONITOR_QUEUE_DATA MonitorQueryData, 
 	uint8_t * const OriginalRecv, 
 	size_t RecvSize);
@@ -236,7 +238,7 @@ ssize_t SocketSelectingOnce(
 	const REQUEST_PROCESS_TYPE RequestType, 
 	const uint16_t Protocol, 
 	std::vector<SOCKET_DATA> &SocketDataList, 
-	void * const OriginalDNSCurveSocketSelectingList, 
+	void * const OriginalDNSCurveSocketSelectingDataList, 
 	const uint8_t * const OriginalSend, 
 	const size_t SendSize, 
 	uint8_t * const OriginalRecv, 
@@ -259,15 +261,15 @@ uint16_t GetChecksum(
 	const uint16_t *Buffer, 
 	const size_t Length);
 uint16_t GetChecksum_ICMPv6(
+	const ipv6_hdr * const IPv6_Header, 
 	const uint8_t * const Buffer, 
-	const size_t Length, 
-	const in6_addr &Destination, 
-	const in6_addr &Source);
+	const size_t Length);
 uint16_t GetChecksum_TCP_UDP(
 	const uint16_t Protocol_Network, 
 	const uint16_t Protocol_Transport, 
 	const uint8_t * const Buffer, 
-	const size_t Length);
+	const size_t Length, 
+	const size_t DataOffset);
 size_t AddLengthDataToHeader(
 	uint8_t * const Buffer, 
 	const size_t RecvLen, 
@@ -284,17 +286,21 @@ size_t MarkWholePacketQuery(
 	const uint8_t * const TName, 
 	const size_t TNameIndex, 
 	std::string &FName);
-void MakeRamdomDomain(
+void MakeRandomDomain(
 	uint8_t * const Buffer);
 void MakeDomainCaseConversion(
 	uint8_t * const Buffer);
-size_t Add_EDNS_To_Additional_RR(
+bool Move_EDNS_LabelToEnd(
+	DNS_PACKET_DATA * const PacketStructure);
+size_t Add_EDNS_LabelToPacket(
 	uint8_t * const Buffer, 
 	const size_t Length, 
 	const size_t MaxLen, 
 	const SOCKET_DATA * const LocalSocketData);
-bool Add_EDNS_To_Additional_RR(
-	DNS_PACKET_DATA * const Packet, 
+bool Add_EDNS_LabelToPacket(
+	DNS_PACKET_DATA * const PacketStructure, 
+	const bool IsAlreadyClientSubnet, 
+	const bool IsAlreadyCookies, 
 	const SOCKET_DATA * const LocalSocketData);
 size_t MakeCompressionPointerMutation(
 	uint8_t * const Buffer, 
@@ -348,7 +354,7 @@ size_t CheckWhiteBannedHostsProcess(
 	bool * const IsLocalRequest, 
 	bool * const IsLocalInBlack);
 size_t CheckHostsProcess(
-	DNS_PACKET_DATA * const Packet, 
+	DNS_PACKET_DATA * const PacketStructure, 
 	uint8_t * const Result, 
 	const size_t ResultSize, 
 	const SOCKET_DATA &LocalSocketData);
@@ -397,7 +403,7 @@ bool OperationModeFilter(
 size_t CheckQueryNameLength(
 	const uint8_t * const Buffer);
 bool CheckQueryData(
-	DNS_PACKET_DATA * const Packet, 
+	DNS_PACKET_DATA * const PacketStructure, 
 	uint8_t * const SendBuffer, 
 	const size_t SendSize, 
 	SOCKET_DATA &LocalSocketData);
@@ -410,7 +416,8 @@ size_t CheckResponseData(
 	uint8_t * const Buffer, 
 	const size_t Length, 
 	const size_t BufferSize, 
-	bool * const IsMarkHopLimits);
+	size_t * const Packet_EDNS_PayloadSize, 
+	size_t * const Packet_EDNS_RecordLength);
 
 //Proxy.h
 size_t SOCKS_TCP_Request(
@@ -530,7 +537,7 @@ bool SSPI_ShutdownConnection(
 	std::vector<SOCKET_DATA> &SocketDataList, 
 	std::vector<ssize_t> &ErrorCodeList);
 #elif (defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS))
-void OpenSSL_Library_Init(
+void OpenSSL_LibraryInit(
 	bool IsLoad);
 bool OpenSSL_CTX_Initializtion(
 	OPENSSL_CONTEXT_TABLE &OpenSSL_CTX);

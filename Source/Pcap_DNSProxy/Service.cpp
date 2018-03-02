@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -68,7 +68,7 @@ bool CheckProcessExists(
 	void)
 {
 //System security initialization
-	std::unique_ptr<uint8_t[]> ACL_Buffer(new uint8_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	const auto ACL_Buffer = std::make_unique<uint8_t[]>(FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	memset(ACL_Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	memset(&GlobalRunningStatus.Initialized_MutexSecurityAttributes, 0, sizeof(GlobalRunningStatus.Initialized_MutexSecurityAttributes));
 	memset(&GlobalRunningStatus.Initialized_MutexSecurityDescriptor, 0, sizeof(GlobalRunningStatus.Initialized_MutexSecurityDescriptor));
@@ -282,7 +282,7 @@ HANDLE WINAPI ExecuteService(
 	void)
 {
 	DWORD ThreadID = 0;
-	const HANDLE ServiceThread = CreateThread(
+	const auto ServiceThread = CreateThread(
 		0, 
 		0, 
 		reinterpret_cast<PTHREAD_START_ROUTINE>(ServiceProc), 
@@ -366,7 +366,7 @@ bool Flush_DNS_MailSlotMonitor(
 	void)
 {
 //System security initialization
-	std::unique_ptr<uint8_t[]> ACL_Buffer(new uint8_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	auto ACL_Buffer = std::make_unique<uint8_t[]>(FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	memset(ACL_Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	SECURITY_ATTRIBUTES SecurityAttributes;
 	SECURITY_DESCRIPTOR SecurityDescriptor;
@@ -382,7 +382,7 @@ bool Flush_DNS_MailSlotMonitor(
 	}
 
 //Create mailslot.
-	const HANDLE MailslotHandle = CreateMailslotW(
+	const auto MailslotHandle = CreateMailslotW(
 		MAILSLOT_NAME, 
 		FILE_BUFFER_SIZE - 1U, 
 		MAILSLOT_WAIT_FOREVER, 
@@ -402,13 +402,13 @@ bool Flush_DNS_MailSlotMonitor(
 		LocalFree(SID_Value);
 
 //Initialization
-	std::unique_ptr<wchar_t[]> Buffer(new wchar_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	const auto Buffer = std::make_unique<wchar_t[]>(FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	wmemset(Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	std::wstring Message;
 	std::string Domain;
 	DWORD MessageLength = 0;
 
-//Mailslot monitor
+//Start Mailslot Monitor.
 	for (;;)
 	{
 	//Reset parameters.
@@ -465,7 +465,7 @@ bool WINAPI Flush_DNS_MailSlotSender(
 	const wchar_t * const Domain)
 {
 //Mailslot initialization
-	const HANDLE FileHandle = CreateFileW(
+	const auto FileHandle = CreateFileW(
 		MAILSLOT_NAME, 
 		GENERIC_WRITE, 
 		FILE_SHARE_READ, 
@@ -567,15 +567,13 @@ void SIG_Handler(
 		GlobalRunningStatus.Initialized_MutexHandle = 0;
 	}
 
-//Free all OpenSSL libraries
+//Free all OpenSSL libraries.
 #if defined(ENABLE_TLS)
-#if OPENSSL_VERSION_NUMBER < OPENSSL_VERSION_1_1_0 //OpenSSL version brfore 1.1.0
 	if (GlobalRunningStatus.IsInitialized_OpenSSL)
 	{
-		OpenSSL_Library_Init(false);
+		OpenSSL_LibraryInit(false);
 		GlobalRunningStatus.IsInitialized_OpenSSL = false;
 	}
-#endif
 #endif
 
 //Print to screen.
@@ -596,13 +594,13 @@ bool Flush_DNS_FIFO_Monitor(
 	void)
 {
 //Initialization
-	std::unique_ptr<uint8_t[]> Buffer(new uint8_t[FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES]());
+	const auto Buffer = std::make_unique<uint8_t[]>(FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	memset(Buffer.get(), 0, FILE_BUFFER_SIZE + PADDING_RESERVED_BYTES);
 	std::string Message;
 	int FIFO_Handle = 0;
 	ssize_t Length = 0;
 
-//FIFO Monitor
+//Start FIFO Monitor.
 	for (;;)
 	{
 	//Create FIFO and create its notify monitor.
@@ -717,15 +715,24 @@ void Flush_DNS_Cache(
 	if (Domain == nullptr || //Flush all DNS cache.
 		strnlen_s(reinterpret_cast<const char *>(Domain), DOMAIN_MAXSIZE + PADDING_RESERVED_BYTES) > DOMAIN_MAXSIZE)
 	{
+	//Remove from DNS cache index list.
+		DNSCacheIndexList.clear();
+
+	//Remove from DNS cache data list.
 		DNSCacheList.clear();
 	}
 	else { //Flush single domain cache.
-		for (auto DNSCacheDataIter = DNSCacheList.begin();DNSCacheDataIter != DNSCacheList.end();)
+		std::string DomainString(reinterpret_cast<const char *>(Domain));
+		if (DNSCacheIndexList.find(DomainString) != DNSCacheIndexList.end())
 		{
-			if (DNSCacheDataIter->Domain == reinterpret_cast<const char *>(Domain))
-				DNSCacheDataIter = DNSCacheList.erase(DNSCacheDataIter);
-			else 
-				++DNSCacheDataIter;
+		//Remove from DNS cache data list.
+			const auto MapRange = DNSCacheIndexList.equal_range(DomainString);
+			for (auto MapIter = MapRange.first;MapIter != MapRange.second;++MapIter)
+				DNSCacheList.erase(MapIter->second);
+
+		//Remove from DNS cache index list.
+			while (DNSCacheIndexList.find(DomainString) != DNSCacheIndexList.end())
+				DNSCacheIndexList.erase(DNSCacheIndexList.find(DomainString));
 		}
 	}
 
@@ -751,13 +758,16 @@ void Flush_DNS_Cache(
 	auto Result = system("service nscd restart 2>/dev/null"); //Name Service Cache Daemon service
 	Result = system("service dnsmasq restart 2>/dev/null"); //Dnsmasq service
 	Result = system("rndc restart 2>/dev/null"); //Name server control utility of BIND(9.1.3 and older version)
-	Result = system("rndc flush 2>/dev/null"); //Name server control utility of BIND(9.2.0 and newer version)
+	Result = system("rndc flush 2>/dev/null"); //Name server control utility of BIND(9.2.0 and later)
 #endif
 #elif defined(PLATFORM_MACOS)
 //	system("lookupd -flushcache 2>/dev/null"); //Less than Mac OS X Tiger(10.4)
 //	system("dscacheutil -flushcache 2>/dev/null"); //Mac OS X Leopard(10.5) and Snow Leopard(10.6)
 	system("killall -HUP mDNSResponder 2>/dev/null"); //Mac OS X Lion(10.7), Mountain Lion(10.8) and Mavericks(10.9)
-	system("discoveryutil mdnsflushcache 2>/dev/null"); //Mac OS X Yosemite(10.10) and newer Mac OS X/macOS version
+	system("discoveryutil udnsflushcaches 2>/dev/null"); //Mac OS X Yosemite(10.10 - 10.10.3)
+	system("discoveryutil mdnsflushcache 2>/dev/null"); //Mac OS X Yosemite(10.10 - 10.10.3)
+	system("dscacheutil -flushcache 2>/dev/null"); //Mac OS X Yosemite(10.10.4 - 10.10.5)
+//	system("killall -HUP mDNSResponder 2>/dev/null"); //Mac OS X El Capitan(10.11) and later
 #endif
 
 	return;

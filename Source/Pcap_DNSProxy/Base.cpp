@@ -1,6 +1,6 @@
 ﻿// This code is part of Pcap_DNSProxy
 // Pcap_DNSProxy, a local DNS server based on WinPcap and LibPcap
-// Copyright (C) 2012-2017 Chengr28
+// Copyright (C) 2012-2018 Chengr28
 // 
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -439,7 +439,7 @@ bool MBS_To_WCS_String(
 		return false;
 
 //Initialization
-	std::unique_ptr<wchar_t[]> TargetBuffer(new wchar_t[Length + PADDING_RESERVED_BYTES]());
+	const auto TargetBuffer = std::make_unique<wchar_t[]>(Length + PADDING_RESERVED_BYTES);
 	wmemset(TargetBuffer.get(), 0, Length + PADDING_RESERVED_BYTES);
 
 //Convert string.
@@ -482,7 +482,7 @@ bool WCS_To_MBS_String(
 		return false;
 
 //Initialization
-	std::unique_ptr<uint8_t[]> TargetBuffer(new uint8_t[Length + PADDING_RESERVED_BYTES]());
+	const auto TargetBuffer = std::make_unique<wchar_t[]>(Length + PADDING_RESERVED_BYTES);
 	memset(TargetBuffer.get(), 0, Length + PADDING_RESERVED_BYTES);
 
 //Convert string.
@@ -658,6 +658,7 @@ bool SortCompare_Hosts(
 	return Begin.FileIndex < End.FileIndex;
 }
 
+#if !defined(ENABLE_LIBSODIUM)
 //Base64 encoding
 //Base64 encoding and decoding, please visit https://github.com/zhicheng/base64.
 size_t Base64_Encode(
@@ -776,6 +777,7 @@ size_t Base64_Decode(
 
 	return strnlen_s(reinterpret_cast<const char *>(Output), OutputSize);
 }
+#endif
 
 //HTTP version 2 HPACK Header Compression static huffman encoding
 //HPACK huffman encoding and decoding, please visit https://github.com/phluid61/mk-hpack.
@@ -808,11 +810,11 @@ HUFFMAN_RETURN_TYPE HPACK_HuffmanEncoding(
 		BitLength += Huffman_Node.BitSize;
 
 	//Canibalise the top bytes.
-		while (BitLength >= 8U)
+		while (BitLength >= BYTES_TO_BITS)
 		{
 			if (Buffer)
 			{
-				Shift = BitLength - 8U;
+				Shift = BitLength - BYTES_TO_BITS;
 				Mask = static_cast<uint64_t>(0xFF) << Shift;
 				Value = (BitQueue & Mask);
 				*Buffer = static_cast<uint8_t>(Value >> Shift);
@@ -822,7 +824,7 @@ HUFFMAN_RETURN_TYPE HPACK_HuffmanEncoding(
 			}
 
 			++(*Produced);
-			BitLength -= 8U;
+			BitLength -= BYTES_TO_BITS;
 		}
 	}
 
@@ -831,7 +833,7 @@ HUFFMAN_RETURN_TYPE HPACK_HuffmanEncoding(
 	{
 		if (Buffer)
 		{
-			Shift = 8U - BitLength;
+			Shift = BYTES_TO_BITS - BitLength;
 			Mask = (1U << Shift) - 1U;
 			*Buffer = static_cast<uint8_t>((BitQueue << Shift) | Mask);
 			++Buffer;
